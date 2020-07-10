@@ -134,7 +134,7 @@ class EdiSaleForwardRequestDocument(models.AbstractModel):
 
             # Loads byte data and convert to json format
             json_data = json.loads(data)
-            validate(json_data, schema)
+            # validate(json_data, schema)
 
             for order in json_data["orders"]:
                 for line in order["lines"]:
@@ -155,7 +155,7 @@ class EdiSaleForwardRequestDocument(models.AbstractModel):
                     {
                         "name": customer["customer_ref"],
                         "full_name": customer["name"]["name"],
-                        "title_key": customer["name"].get("title"),
+                        # "title_key": customer["name"].get("title"),
                         "is_company": hasattr(customer, "customer_type")
                         and customer["customer_type"] == "company",
                         **partner_address(customer["address"]),
