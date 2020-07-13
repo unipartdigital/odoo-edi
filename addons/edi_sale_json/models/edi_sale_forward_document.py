@@ -123,7 +123,11 @@ class EdiSaleForwardDocument(models.AbstractModel):
             "orders": [],
         }
 
+        order_numbers = ""
+
         for sale_rec in sale_recs:
+
+            order_numbers += "%s_" % sale_rec.name
 
             sale_line_recs = sale_line_recs_by_sale.get(sale_rec.sale_id)
             if not sale_line_recs:
@@ -137,5 +141,5 @@ class EdiSaleForwardDocument(models.AbstractModel):
             data = output.getvalue().encode()
 
         # Create output attachment
-        filename = "sale_forward_%s.json" % datetime.now().strftime("%Y%m%d_%H%M")
+        filename = "sale_forward_%s%s.json" % (order_numbers, datetime.now().strftime("%Y%m%d_%H%M"))
         doc.output(filename, data)

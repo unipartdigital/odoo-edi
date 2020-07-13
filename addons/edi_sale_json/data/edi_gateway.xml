@@ -3,10 +3,10 @@
   <data>
     <record id="sale_forward_JSON_local_gateway" model="edi.gateway">
       <field name="name">Sale Forward JSON Local Gateway</field>
-      <field name="model_id" ref="edi.model_edi_connection_local"/>
-      <field name="username"></field>
+      <field name="model_id" ref="edi.model_edi_connection_sftp"/>
+      <field name="username">udes13</field>
       <field name="config_password"></field>
-      <field name="server"></field>
+      <field name="server">sftp.udes.devonly.net</field>
       <field name="safety"></field>
       <field name="timeout" eval="30.0"/>
     </record>
@@ -14,7 +14,7 @@
       <field name="name">Sale Forward JSON Local Path</field>
       <field name="sequence" eval="10"/>
       <field name="gateway_id" ref="sale_forward_JSON_local_gateway"/>
-      <field name="path">/</field>
+      <field name="path">/share/</field>
       <field name="allow_receive" eval="False"/>
       <field name="allow_send" eval="True"/>
       <field name="age_window" eval="24"/>
