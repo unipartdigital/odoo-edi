@@ -40,5 +40,5 @@ class StockPicking(models.Model):
         res = super().action_done()
         self.mapped('picking_type_id').filtered(
             lambda x: x.edi_pick_report_autoemit
-        ).action_edi_pick_report()
+        ).sudo().action_edi_pick_report()
         return res
