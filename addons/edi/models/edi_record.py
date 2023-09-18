@@ -106,8 +106,9 @@ class EdiRecord(models.AbstractModel):
         EdiRecordType = self.env["edi.record.type"]
 
         ir_model = IrModel.search([("model", "=", self._name)])
-        edi_record_type = EdiRecordType.search([("model_id", "=", ir_model.id)])
-        return edi_record_type.clear_cache_prepare
+        edi_record_types = EdiRecordType.search([("model_id", "=", ir_model.id)])
+        clear_cache_prepare = sum(edi_record_types.mapped("clear_cache_prepare"))
+        return clear_cache_prepare
 
     @property
     def clear_cache_execute(self):
@@ -116,8 +117,9 @@ class EdiRecord(models.AbstractModel):
         EdiRecordType = self.env["edi.record.type"]
 
         ir_model = IrModel.search([("model", "=", self._name)])
-        edi_record_type = EdiRecordType.search([("model_id", "=", ir_model.id)])
-        return edi_record_type.clear_cache_execute
+        edi_record_types = EdiRecordType.search([("model_id", "=", ir_model.id)])
+        clear_cache_execute = sum(edi_record_types.mapped("clear_cache_execute"))
+        return clear_cache_execute
 
     _edi_relates = ()
     """EDI lookup relationships"""
