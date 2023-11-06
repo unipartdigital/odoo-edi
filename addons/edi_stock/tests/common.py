@@ -1,6 +1,9 @@
 """EDI orderpoint tests"""
 
 from odoo.addons.edi.tests.common import EdiCase
+from odoo.fields import Datetime
+from datetime import timedelta
+from itertools import count
 
 
 class EdiOrderpointCase(EdiCase):
@@ -168,6 +171,8 @@ class EdiQuantCase(EdiCase):
                 "location_id": cls.loc_stock.id,
             }
         )
+        # Counter to ensure stock.quant are created in order
+        cls.quant_counter = count()
 
     @classmethod
     def create_quant(cls, location, product, qty, **kwargs):
@@ -179,5 +184,7 @@ class EdiQuantCase(EdiCase):
             "quantity": qty,
         }
         vals.update(kwargs)
+        #Ensure quants are reserved in order of creation
+        vals.setdefault("in_date", Datetime.now() + timedelta(0, next(cls.quant_counter)))
         quant = Quant.create(vals)
         return quant
