@@ -285,7 +285,7 @@ class EdiGateway(models.Model):
     def action_view_paths(self):
         """View paths"""
         self.ensure_one()
-        action = self.env.ref("edi.gateway_path_action").read()[0]
+        action = self.env["ir.actions.actions"]._for_xml_id("edi.gateway_path_action")
         action["domain"] = [("gateway_id", "=", self.id)]
         action["context"] = {"default_gateway_id": self.id}
         return action
@@ -293,14 +293,14 @@ class EdiGateway(models.Model):
     def action_view_transfers(self):
         """View transfers"""
         self.ensure_one()
-        action = self.env.ref("edi.transfer_action").read()[0]
+        action = self.env["ir.actions.actions"]._for_xml_id("edi.transfer_action")
         action["domain"] = [("gateway_id", "=", self.id)]
         return action
 
     def action_view_docs(self):
         """View documents"""
         self.ensure_one()
-        action = self.env.ref("edi.document_action").read()[0]
+        action = self.env["ir.actions.actions"]._for_xml_id("edi.document_action")
         action["domain"] = [("gateway_id", "=", self.id)]
         action["context"] = {"create": False}
         return action
@@ -308,7 +308,7 @@ class EdiGateway(models.Model):
     def action_view_cron(self):
         """View scheduled jobs"""
         self.ensure_one()
-        action = self.env.ref("edi.cron_action").read()[0]
+        action = self.env["ir.actions.actions"]._for_xml_id("edi.cron_action")
         action["domain"] = [("state", "=", "edi"), ("edi_gateway_id", "=", self.id)]
         action["context"] = {
             "default_model_id": self.env["ir.model"]._get_id("edi.gateway"),

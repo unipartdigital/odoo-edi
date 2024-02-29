@@ -87,7 +87,7 @@ class EdiTransfer(models.Model):
     def action_view_docs(self):
         """View documents"""
         self.ensure_one()
-        action = self.env.ref("edi.document_action").read()[0]
+        action = self.env["ir.actions.actions"]._for_xml_id("edi.document_action")
         action["domain"] = [("transfer_id", "=", self.id)]
         action["context"] = {"create": False}
         return action
@@ -95,7 +95,7 @@ class EdiTransfer(models.Model):
     def action_view_inputs(self):
         """View input attachments"""
         self.ensure_one()
-        action = self.env.ref("edi.document_attachments_action").read()[0]
+        action = self.env["ir.actions.actions"]._for_xml_id("edi.document_attachments_action")
         action["name"] = _("Inputs")
         action["domain"] = [("id", "in", self.mapped("input_ids.id"))]
         action["context"] = {"create": False}
@@ -104,7 +104,7 @@ class EdiTransfer(models.Model):
     def action_view_outputs(self):
         """View output attachments"""
         self.ensure_one()
-        action = self.env.ref("edi.document_attachments_action").read()[0]
+        action = self.env["ir.actions.actions"]._for_xml_id("edi.document_attachments_action")
         action["name"] = _("Outputs")
         action["domain"] = [("id", "in", self.mapped("output_ids.id"))]
         action["context"] = {"create": False}

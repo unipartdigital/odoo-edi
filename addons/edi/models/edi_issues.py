@@ -141,7 +141,7 @@ class EdiIssue(models.AbstractModel):
     def action_view_issues(self):
         """View open issues"""
         self.ensure_one()
-        action = self.env.ref("project.action_view_task").read()[0]
+        action = self.env["ir.actions.actions"]._for_xml_id("project.action_view_task")
         action["domain"] = [(self._fields["issue_ids"].inverse_name, "=", self.id)]
         action["context"] = {"default_%s" % k: v for k, v in self._issue_vals().items()}
         action["context"].update({"create": True})

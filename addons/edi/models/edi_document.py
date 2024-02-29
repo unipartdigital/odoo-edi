@@ -459,7 +459,7 @@ class EdiDocument(models.Model):
     def action_view_inputs(self):
         """View input attachments"""
         self.ensure_one()
-        action = self.env.ref("edi.document_attachments_action").sudo().read()[0]
+        action = self.env["ir.actions.actions"]._for_xml_id("edi.document_attachments_action")
         action["name"] = _("Inputs")
         action["domain"] = [
             ("res_model", "=", "edi.document"),
@@ -476,7 +476,7 @@ class EdiDocument(models.Model):
     def action_view_outputs(self):
         """View output attachments"""
         self.ensure_one()
-        action = self.env.ref("edi.document_attachments_action").sudo().read()[0]
+        action = self.env["ir.actions.actions"]._for_xml_id("edi.document_attachments_action")
         action["name"] = _("Outputs")
         action["domain"] = [
             ("res_model", "=", "edi.document"),
