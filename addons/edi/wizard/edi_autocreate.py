@@ -33,7 +33,7 @@ class EdiAutocreateWizard(models.TransientModel):
     def action_display(self):
         """Display autocreated EDI documents"""
         self.ensure_one()
-        action = self.env.ref("edi.document_action").sudo().read()[0]
+        action = self.env["ir.actions.actions"]._for_xml_id("edi.document_action")
         action["target"] = "main"
         action["name"] = _("Autocreated EDI Documents")
         action["domain"] = [("id", "in", self.doc_ids.ids)]
