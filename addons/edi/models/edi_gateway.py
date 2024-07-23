@@ -337,7 +337,8 @@ class EdiGateway(models.Model):
     def do_transfer(self, conn=None):
         """Receive input attachments, process documents, send outputs"""
         self.ensure_one()
-        transfer = self.transfer_ids.create(
+        EdiTransfer = self.env["edi.transfer"]
+        transfer = EdiTransfer.create(
             {
                 "gateway_id": self.id,
                 "allow_process": self._context.get("default_allow_process", self.automatic),
@@ -361,12 +362,15 @@ class EdiGateway(models.Model):
                     _("Gateway disabled as safety catch on gateway '%s' not configured.")
                     % self.name
                 )
+            # With environment will close the connection after finishing the transfer
             if conn is not None:
                 with self.env.cr.savepoint():
                     transfer.do_transfer(conn)
             else:
                 with Model.connect(self) as auto_conn, self.env.cr.savepoint():
                     transfer.do_transfer(auto_conn)
+            # After transferring what's configured, process the received documents
+            transfer.do_process()
         except Exception as err:
             transfer.raise_issue(_("Transfer failed: %s"), err)
         return transfer
