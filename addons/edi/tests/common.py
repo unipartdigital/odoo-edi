@@ -46,6 +46,12 @@ class EdiCase(common.SavepointCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        # Patching the cursor in order not to commit if in code there are cr.commit()
+        patch_cr = patch.object(
+            cls.env.cr, "commit", autospec=True, return_value=None
+        )
+        patch_cr.start()
+        cls.addClassCleanup(patch_cr.stop)
         cls.doc_type_unknown = cls.env.ref("edi.document_type_unknown")
 
         # Locate test file directory corresponding to the class (which
@@ -199,3 +205,4 @@ class EdiCase(common.SavepointCase):
         path = get_resource_path(module, "tests", path)
         if path:
             cls.files = pathlib.Path(path)
+
