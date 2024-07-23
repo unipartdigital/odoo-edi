@@ -3,6 +3,7 @@
 import logging
 from odoo import api, fields, models
 from odoo.tools.translate import _
+import time
 
 _logger = logging.getLogger(__name__)
 
@@ -129,7 +130,7 @@ class EdiTransfer(models.Model):
             self.input_ids += inputs
 
             # Create documents for attachments
-            docs = path.doc_type_ids.autocreate(inputs)
+            docs = path.doc_type_ids.autocreate(inputs, allow_process=self.allow_process)
 
             # Associate documents with this transfer
             docs.write({"transfer_id": self.id})
@@ -163,13 +164,22 @@ class EdiTransfer(models.Model):
             self.output_ids += outputs
 
     def do_transfer(self, conn):
-        """Receive input attachments, process documents, send outputs"""
+        """Receive input attachments, send outputs"""
         self.ensure_one()
 
         # Receive inputs, if applicable
         if self.allow_receive:
             self.receive_inputs(conn)
 
+        # Send outputs, if applicable
+        if self.allow_send:
+            self.send_outputs(conn)
+
+        _logger.info("%s transfer complete", self.gateway_id.name)
+
+    def do_process(self):
+        """Process documents"""
+        self.ensure_one()
         # Prepare and execute documents, if applicable
         if self.allow_process:
             for doc in self.doc_ids:
@@ -182,9 +192,3 @@ class EdiTransfer(models.Model):
                         self.message_post(body=(_("Executed %s") % doc.name))
                     else:
                         self.message_post(body=(_("Prepared %s") % doc.name))
-
-        # Send outputs, if applicable
-        if self.allow_send:
-            self.send_outputs(conn)
-
-        _logger.info("%s transfer complete", self.gateway_id.name)

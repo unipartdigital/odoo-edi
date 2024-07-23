@@ -62,8 +62,11 @@
 	    <div class="oe_title">
 	      <label for="name" class="oe_edit_only"/>
 	      <h1>
-		<field name="name" placeholder="e.g. PMD00001"/>
+	        <field name="name" placeholder="e.g. PMD00001"/>
 	      </h1>
+	      <h2 attrs="{'invisible': [('processing_state', 'not in', ('waiting', 'preparing', 'executing'))]}">
+					<span>Processing Status: <field name="processing_state"/></span>
+	      </h2>
 	    </div>
 	    <group>
 	      <group name="basic">
@@ -108,6 +111,7 @@
 	  <field name="gateway_id" groups="edi.group_edi_gateway_view"/>
 	  <field name="transfer_id" groups="edi.group_edi_gateway_view"/>
 	  <field name="state"/>
+	  <field name="processing_state" optional="hide"/>
 	  <field name="issue_count"/>
 	  <field name="create_date"/>
 	  <field name="prepare_date"/>
@@ -129,6 +133,7 @@
 	  <field name="input_ids"/>
 	  <field name="output_ids"/>
 	  <field name="state"/>
+	  <field name="processing_state"/>
 	  <group>
 	    <filter name="issues" string="Has Issues"
 		    domain="[('issue_count', '!=', 0)]"/>
@@ -140,6 +145,8 @@
 		    context="{'group_by': 'doc_type_id'}"/>
 	    <filter name="by_state" string="Status" domain="[]"
 		    context="{'group_by': 'state'}"/>
+			<filter name="by_processing_state" string="Processing Status" domain="[]"
+		    context="{'group_by': 'processing_state'}"/>
 	    <filter name="by_gateway_id" string="Gateway" domain="[]"
 		    context="{'group_by': 'gateway_id'}" groups="edi.group_edi_gateway_view"/>
 	    <filter name="by_transfer_id" string="Transfer" domain="[]"
@@ -181,6 +188,14 @@
 		    <div><field name="doc_type_id"/></div>
 		    <div><field name="create_date"/></div>
 		  </div>
+			<div class="col-xs-12">
+				<div><span class="pull-right text-right" attrs="{'invisible': [('processing_state', 'not in', ('waiting', 'preparing', 'executing'))]}">
+					<strong>Processing Status: </strong>
+					<field name="processing_state"
+								 widget="label_selection"
+								 options="{'classes': {'waiting': 'default', 'preparing': 'warning', 'executing': 'success'}}"/>
+				</span></div>
+			</div>
 		</div>
 	      </div>
 	    </t>

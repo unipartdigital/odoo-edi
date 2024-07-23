@@ -99,7 +99,7 @@ class EdiDocumentType(models.Model):
     _sql_constraints = [("model_uniq", "unique (model_id)", "The document model must be unique")]
 
     @api.model
-    def autocreate(self, inputs):
+    def autocreate(self, inputs, allow_process=True):
         """Autocreate documents based on input attachments"""
         Document = self.env["edi.document"]
         inputs.write({"res_model": "edi.document", "res_field": "input_ids"})
@@ -121,7 +121,14 @@ class EdiDocumentType(models.Model):
         docs = Document.browse()
         by_first_input = lambda x: input_ids.index(min(x.inputs.ids))
         for autodetect in sorted(autodetects, key=by_first_input):
-            doc = Document.create({"doc_type_id": autodetect.type.id})
+            doc_create_data = {
+                "doc_type_id": autodetect.type.id,
+            }
+            if allow_process:
+                doc_create_data.update({
+                    "processing_state": "waiting"
+                })
+            doc = Document.create(doc_create_data)
             autodetect.inputs.sudo().write({"res_id": doc.id})
             docs += doc
         return docs
@@ -166,6 +173,18 @@ class EdiDocument(models.Model):
         readonly=True,
         index=True,
         default="draft",
+        copy=False,
+        tracking=True,
+    )
+    processing_state = fields.Selection(
+        [
+            ("waiting", "Waiting"),
+            ("preparing", "Preparing"),
+            ("executing", "Executing")
+        ],
+        string="Processing Status",
+        readonly=True,
+        index=True,
         copy=False,
         tracking=True,
     )
@@ -339,6 +358,15 @@ class EdiDocument(models.Model):
                     (stats.count / count),
                 )
 
+    def commit_processing_state_change(self, processing_state=""):
+        """
+        By default, clean processing state or set with the value of processing state
+        """
+        self.ensure_one()
+        if self.processing_state != processing_state:
+            self.processing_state = processing_state
+            self.env.cr.commit()
+
     def action_prepare(self):
         """Prepare document
 
@@ -352,6 +380,9 @@ class EdiDocument(models.Model):
         # Check document state
         if self.state != "draft":
             raise UserError(_("Cannot prepare a %s document") % self._get_state_name())
+        # Set processing status to preparing and commit changes so would be visible that document
+        # is being executing
+        self.commit_processing_state_change("preparing")
         # Close any stale issues
         self.close_issues()
         # Create audit trail
@@ -368,10 +399,12 @@ class EdiDocument(models.Model):
                 DocModel.with_env(env).prepare(self.with_env(env))
                 self.recompute()
         except Exception as err:
+            self.commit_processing_state_change()
             self.raise_issue(_("Preparation failed: %s"), err)
             return False
         # Mark as prepared
         self.state = "prep"
+        self.commit_processing_state_change()
         _logger.info("Prepared %s in %.2fs, %d queries", self.name, stats.elapsed, stats.count)
         return True
 
@@ -416,6 +449,9 @@ class EdiDocument(models.Model):
         # Check document state
         if self.state != "prep":
             raise UserError(_("Cannot execute a %s document") % self._get_state_name())
+        # Set processing status to executing and commit changes so would be visible that document
+        # is being executing
+        self.commit_processing_state_change("executing")
         # Close any stale issues
         self.close_issues()
         # Execute document
@@ -428,6 +464,7 @@ class EdiDocument(models.Model):
                 DocModel.with_env(env).execute(self.with_env(env))
                 self.recompute()
         except Exception as err:
+            self.commit_processing_state_change()
             self.raise_issue(_("Execution failed: %s"), err)
             return False
         # Create audit trail
@@ -436,6 +473,9 @@ class EdiDocument(models.Model):
         # Mark as processed
         self.execute_date = fields.Datetime.now()
         self.state = "done"
+        # Set processing status to inactive and commit changes so would be visible that document
+        # is being executed
+        self.commit_processing_state_change()
         _logger.info("Executed %s in %.2fs, %d queries", self.name, stats.elapsed, stats.count)
         return True
 
