@@ -10,9 +10,13 @@
 	<form string="EDI Document">
 	  <header>
 	    <button name="action_prepare" type="object" string="Prepare"
-		    states="draft" class="oe_highlight"/>
+            attrs="{'invisible': ['|', ('state', '!=', 'draft'),
+            ('processing_state', 'in', ('waiting', 'preparing', 'executing'))]}"
+            class="oe_highlight"/>
 	    <button name="action_execute" type="object" string="Execute"
-		    states="prep" class="oe_highlight"/>
+            attrs="{'invisible': ['|', ('state', '!=', 'prep'),
+            ('processing_state', 'in', ('waiting', 'preparing', 'executing'))]}"
+            class="oe_highlight"/>
 	    <button name="action_unprepare" type="object" string="Unprepare"
 		    states="prep"/>
 	    <button name="action_cancel" type="object" string="Cancel"
