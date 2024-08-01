@@ -192,3 +192,10 @@ class EdiTransfer(models.Model):
                         self.message_post(body=(_("Executed %s") % doc.name))
                     else:
                         self.message_post(body=(_("Prepared %s") % doc.name))
+
+    @api.model
+    def log_progress(self, doc, log_message):
+        """Log the progress message to console/log device and also to the EdiDocumentProgress
+        instance linked to the EdiDocument to display the same in UI, while processing is ongoing."""
+        _logger.info(log_message)
+        doc.create_or_update_edi_progress(log_message)

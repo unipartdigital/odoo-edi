@@ -96,6 +96,24 @@ class EdiDocumentType(models.Model):
         default=False,
     )
 
+    # Controls stages for automatic processing
+    processing_state = fields.Selection(
+        [
+            ("disabled", "Disabled"),
+            ("prepare", "Prepare"),
+            ("execute", "Execute")
+        ],
+        string="Processing Status",
+        help="* Disabled: only receive file, don't try to process automatically."\
+        "  Users will manually process it."\
+        "* Prepare: only prepare after receiving, users will manually execute it."\
+        "  This can be used to check that the file is syntactically correct."\
+        "* Execute: automatically process, as if 'allow_process' is True",
+        readonly=True,
+        copy=False,
+        tracking=True,
+    )
+
     _sql_constraints = [("model_uniq", "unique (model_id)", "The document model must be unique")]
 
     @api.model
@@ -231,6 +249,7 @@ class EdiDocument(models.Model):
     output_count = fields.Integer(
         string="Output Count", compute="_compute_output_count", store=True
     )
+    progress_log = fields.Text(compute="_compute_progress_log", help="Document processing log messages")
 
     # Issues (i.e. asynchronously reported errors)
     project_id = fields.Many2one(related="doc_type_id.project_id", readonly=True)
@@ -249,9 +268,16 @@ class EdiDocument(models.Model):
 
     @api.depends("output_ids", "output_ids.res_id")
     def _compute_output_count(self):
-        """Compute number of output attachments (for UI display)"""
+        """Compute number of output attachments (for UI display)."""
         for doc in self:
             doc.output_count = len(doc.output_ids)
+
+    def _compute_progress_log(self):
+        """Compute the processing log messages (for UI display). Compute on the fly to avoid DB
+        reference, as it may cause deadlock."""
+        EDIDocProgress = self.env["edi.document.progress"]
+        for rec in self:
+            rec.progress_log = EDIDocProgress.search([("doc_id", "=", rec.id)]).progress_log
 
     @api.depends(
         "doc_type_id",
@@ -367,6 +393,52 @@ class EdiDocument(models.Model):
             self.processing_state = processing_state
             self.env.cr.commit()
 
+    def create_or_update_edi_progress(self, log_message=None):
+        """EDI records processing is triggered in `prepare()` and `execute()` which creates a cursor
+        savepoint to atomically commit/rollback the created/updated records. To report the progress
+        of long running executions, it is required to continually update the so-far-processed status
+        log, **while** the records are being processed. As the EDI document is locked at row-level
+        before starting process (in `lock_for_action`), writing to that record will deadlock.
+        Instead, an instance of EdiDocumentProgress will keep the progress count (which is linked to
+        an EDIDocument). The progress update logs must be committed to the DB to display the
+        progress in UI/view.
+
+        In order to commit change to 'another object' (EdiDocumentProgress in this case), create
+        another DB cursor. Transaction is committed on closing the cursor. This leaves the
+        encompassing transaction (EDI records processing) undisturbed."""
+        self.ensure_one()
+        towrite = self.env.all.towrite.copy()
+        tocompute = self.env.all.tocompute.copy()
+        with self.pool.cursor() as temp_cr:
+            # NOTE: this method does a commit using another cursor, but it is called from inside a
+            # savepoint. Odoo core has a bug that it commits all pending writes without considering
+            # the cursor. To work around, clear the pending writes & computes here; write the progress
+            # and commit; then restore those after.
+            temp_self = self.with_env(self.env(cr=temp_cr))
+            temp_self.env.all.towrite.clear()
+            temp_self.env.all.tocompute.clear()
+
+            EDIDocProgress = temp_self.env["edi.document.progress"]
+            edi_progress = EDIDocProgress.search([("doc_id", "=", temp_self.id)])
+            if not edi_progress:
+                edi_progress = EDIDocProgress.create({"doc_id": temp_self.id})
+            # Update with the message, or reset it
+            updated_log = ""
+            if log_message:
+                updated_log = "\n".join([edi_progress.progress_log or "", log_message]).lstrip()
+            try:
+                edi_progress.write({"progress_log": updated_log})
+            except:
+                temp_cr.rollback()
+
+        # Restore the original records to write in the main transcation
+        self.env.all.towrite = towrite
+        self.env.all.tocompute = tocompute
+
+    def reset_progress(self):
+        # Reset the existing log messages
+        self.create_or_update_edi_progress()
+
     def action_prepare(self):
         """Prepare document
 
@@ -382,6 +454,7 @@ class EdiDocument(models.Model):
             raise UserError(_("Cannot prepare a %s document") % self._get_state_name())
         # Set processing status to preparing and commit changes so would be visible that document
         # is being executing
+        self.reset_progress()
         self.commit_processing_state_change("preparing")
         # Close any stale issues
         self.close_issues()
@@ -428,6 +501,7 @@ class EdiDocument(models.Model):
         # Mark as in draft
         self.prepare_date = None
         self.state = "draft"
+        self.reset_progress()
         _logger.info("Unprepared %s", self.name)
         return True
 
@@ -451,6 +525,7 @@ class EdiDocument(models.Model):
             raise UserError(_("Cannot execute a %s document") % self._get_state_name())
         # Set processing status to executing and commit changes so would be visible that document
         # is being executing
+        self.reset_progress()
         self.commit_processing_state_change("executing")
         # Close any stale issues
         self.close_issues()
@@ -597,3 +672,21 @@ class EdiDocumentUnknown(models.AbstractModel):
         """Prepare document"""
         super().prepare(doc)
         raise UserError(_("Unknown document type"))
+
+
+class EdiDocumentProgress(models.Model):
+    """Progress tracking for EDI document processing. A separate model is used to write the progress
+    in the middle of EDI records processing. The main EDI document is write locked in that duration."""
+    
+    _name = "edi.document.progress"
+    _description = "Progress of EDI document processing"
+
+    doc_id = fields.Many2one(
+        "edi.document",
+        string="EDI Document",
+        required=True,
+        readonly=True,
+        #index=True,
+        ondelete="cascade",
+    )
+    progress_log = fields.Text(string="Progress log", help="EDI document processing log messages")

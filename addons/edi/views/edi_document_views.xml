@@ -92,6 +92,13 @@
 		      attrs="{'invisible':[('prepare_date','=',False)]}">
 	      <field name="rec_type_names" invisible="1"/>
 	    </notebook>
+	    <notebook name="progress" groups="edi.group_edi_document_support">
+	      <page name="processing_status" string="Status">
+	        <group>
+	          <field name="progress_log"/>
+	        </group>
+	      </page>
+	    </notebook>
 	  </sheet>
 	  <div class="oe_chatter">
             <field name="message_follower_ids" widget="mail_followers"/>
