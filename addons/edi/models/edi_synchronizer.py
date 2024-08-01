@@ -237,7 +237,7 @@ class EdiSyncRecord(models.AbstractModel):
         # Process records in batches for efficiency
         for r, vbatch in batched(vlist, self.BATCH_SIZE):
 
-            _logger.info("%s preparing %s %d-%d", doc.name, self._name, r[0], r[-1])
+            self.log_progress(doc, "%s preparing %s %d-%d" %(doc.name, self._name, r[0], r[-1]))
             len_r = len(r)
             total += len_r
             clear_cache_count += len_r
@@ -322,8 +322,9 @@ class EdiSyncRecord(models.AbstractModel):
         # Identify any missing existing target records
         new = self.filtered(lambda x: not x[target])
         for r, batch in new.batched(self.BATCH_SIZE):
-            _logger.info(
-                "%s rechecking %s %d-%d of %d", doc.name, Target._name, r[0], r[-1], len(new)
+            self.log_progress(
+                doc,
+                "%s rechecking %s %d-%d of %d" %(doc.name, Target._name, r[0], r[-1], len(new))
             )
             targets_by_key = self.targets_by_key(batch)
             for rec in batch:
@@ -352,13 +353,16 @@ class EdiSyncRecord(models.AbstractModel):
             for r, batch in existing.batched(self.BATCH_UPDATE):
                 batch.precache()
                 count = len(r)
-                _logger.info(
-                    "%s updating %s %d-%d of %d",
+                self.log_progress(
+                    doc,
+                    "%s updating %s %d-%d of %d" \
+                    %(
                     doc.name,
                     Target._name,
                     offset,
                     (offset + count - 1),
-                    len(self),
+                    len(self)
+                    )
                 )
                 with self.statistics() as stats:
                     vals_list = [rec.target_values(rec._record_values()) for rec in batch]
@@ -380,14 +384,17 @@ class EdiSyncRecord(models.AbstractModel):
                                 rec.error = ex.name
                                 _logger.exception("Failed to update for %r, %s", rec, rec.name)
                     self.recompute()
-                _logger.info(
-                    "%s updated %s %d-%d in %.2fs, %d excess queries",
+                self.log_progress(
+                    doc,
+                    "%s updated %s %d-%d in %.2fs, %d excess queries" \
+                    %(
                     doc.name,
                     Target._name,
                     offset,
                     (offset + count - 1),
                     stats.elapsed,
-                    (stats.count - count),
+                    (stats.count - count)
+                    )
                 )
                 offset += count
                 clear_cache_count += count
@@ -400,13 +407,16 @@ class EdiSyncRecord(models.AbstractModel):
             for r, batch in new.batched(self.BATCH_CREATE):
                 batch.precache()
                 count = len(r)
-                _logger.info(
-                    "%s creating %s %d-%d of %d",
+                self.log_progress(
+                    doc,
+                    "%s creating %s %d-%d of %d" \
+                    %(
                     doc.name,
                     Target._name,
                     offset,
                     (offset + count - 1),
-                    len(self),
+                    len(self)
+                    )
                 )
                 with self.statistics() as stats:
                     vals_list = list(
@@ -433,20 +443,30 @@ class EdiSyncRecord(models.AbstractModel):
                     for rec, created in zip(batch, targets):
                         rec[target] = created
                     self.recompute()
-                _logger.info(
-                    "%s created %s %d-%d in %.2fs, %d excess queries",
+                self.log_progress(
+                    doc,
+                    "%s created %s %d-%d in %.2fs, %d excess queries" \
+                    %(
                     doc.name,
                     Target._name,
                     offset,
                     (offset + count - 1),
                     stats.elapsed,
-                    (stats.count - 2 * count),
+                    (stats.count - 2 * count)
+                    )
                 )
                 offset += count
                 clear_cache_count += count
                 clear_cache_count = self.check_clear_cache(
                     self.clear_cache_execute, clear_cache_count
                 )
+
+    @api.model
+    def log_progress(self, doc, log_message):
+        """Log the progress message to console/log device and also to the EdiDocumentProgress
+        instance linked to the EdiDocument to display the same in UI, while processing is ongoing."""
+        _logger.info(log_message)
+        doc.create_or_update_edi_progress(log_message)
 
 
 class EdiDeactivatorRecord(models.AbstractModel):

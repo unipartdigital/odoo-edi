@@ -186,14 +186,17 @@ class EdiRecord(models.AbstractModel):
             # Process records in batches to minimise database lookups
             keygetter = itemgetter(rel.key)
             for r, batch in missing.batched(self.BATCH_SIZE):
-                _logger.info(
-                    "%s recording %s.%s %d-%d of %d",
+                self.log_progress(
+                    doc,
+                    "%s recording %s.%s %d-%d of %d" \
+                    %(
                     doc.name,
                     self._name,
                     rel.target,
                     r[0],
                     r[-1],
                     len(missing),
+                    )
                 )
 
                 # Search for target records by key
@@ -321,7 +324,7 @@ class EdiRecord(models.AbstractModel):
         """
 
         # Initialise statistics
-        _logger.info("%s preparing %s", doc.name, self._name)
+        self.log_progress(doc, "%s preparing %s" %(doc.name, self._name))
 
         # Create records
         with self.statistics() as stats:
@@ -336,12 +339,15 @@ class EdiRecord(models.AbstractModel):
                 pass
 
         # Log statistics
-        _logger.info(
-            "%s prepared %s in %.2fs, %d excess queries",
+        self.log_progress(
+            doc,
+            "%s prepared %s in %.2fs, %d excess queries" \
+            %(
             doc.name,
             self._name,
             stats.elapsed,
             (stats.count - 1),
+            )
         )
 
     def execute(self):
@@ -355,3 +361,10 @@ class EdiRecord(models.AbstractModel):
         # which this EDI record refers via a lookup relationship.
         #
         return self._add_edi_relates(required=self._edi_relates_required)
+      
+    @api.model
+    def log_progress(self, doc, log_message):
+        """Log the progress message to console/log device and also to the EdiDocumentProgress
+        instance linked to the EdiDocument to display the same in UI, while processing is ongoing."""
+        _logger.info(log_message)
+        doc.create_or_update_edi_progress(log_message)
