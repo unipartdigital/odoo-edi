@@ -97,19 +97,19 @@ class EdiDocumentType(models.Model):
     )
 
     # Controls stages for automatic processing
-    processing_state = fields.Selection(
+    processing_level = fields.Selection(
         [
             ("disabled", "Disabled"),
             ("prepare", "Prepare"),
             ("execute", "Execute")
         ],
-        string="Processing Status",
+        default="execute",
+        string="Processing Level",
         help="* Disabled: only receive file, don't try to process automatically."\
         "  Users will manually process it."\
         "* Prepare: only prepare after receiving, users will manually execute it."\
         "  This can be used to check that the file is syntactically correct."\
-        "* Execute: automatically process, as if 'allow_process' is True",
-        readonly=True,
+        "* Execute: automatically process, as if `allow_process` is True on `edi.transfer`.",
         copy=False,
         tracking=True,
     )
@@ -142,7 +142,7 @@ class EdiDocumentType(models.Model):
             doc_create_data = {
                 "doc_type_id": autodetect.type.id,
             }
-            if allow_process:
+            if allow_process and self.processing_level in ("prepare", "execute"):
                 doc_create_data.update({
                     "processing_state": "waiting"
                 })
