@@ -112,17 +112,20 @@ class EdiSaleRequestDocument(models.AbstractModel):
         # Automatically confirm sale orders, if applicable
         if self._auto_confirm:
             for r, sales in reqs.mapped("sale_id").batched(self.BATCH_CONFIRM):
-                _logger.info("%s confirming %d-%d", doc.name, r[0], r[-1])
+                self.log_progress(doc, "%s confirming %d-%d" %(doc.name, r[0], r[-1]))
                 with self.statistics() as stats:
                     sales.action_confirm()
                     self.recompute()
-                _logger.info(
-                    "%s confirmed %d-%d in %.2fs, %d queries",
+                self.log_progress(
+                    doc,
+                    "%s confirmed %d-%d in %.2fs, %d queries" \
+                    %(
                     doc.name,
                     r[0],
                     r[-1],
                     stats.elapsed,
                     stats.count,
+                    )
                 )
 
     def get_invalid_partners(self, doc):
@@ -225,3 +228,10 @@ class EdiSaleRequestDocument(models.AbstractModel):
             records = model.search(error_domain)
             records.write({"error": False})
         return
+
+    @api.model
+    def log_progress(self, doc, log_message):
+        """Log the progress message to console/log device and also to the EdiDocumentProgress
+        instance linked to the EdiDocument to display the same in UI, while processing is ongoing."""
+        _logger.info(log_message)
+        doc.create_or_update_edi_progress(log_message)

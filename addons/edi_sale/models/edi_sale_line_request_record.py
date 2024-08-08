@@ -92,8 +92,16 @@ class EdiSaleLineRequestRecord(models.Model):
         # Process records in batches for efficiency
         for r, batch in self.batched(self.BATCH_CREATE):
 
-            _logger.info(
-                "%s creating %s %d-%d of %d", doc.name, SaleLine._name, r[0], r[-1], len(self)
+            self.log_progress(
+                doc,
+                "%s creating %s %d-%d of %d" \
+                %(
+                doc.name,
+                SaleLine._name,
+                r[0],
+                r[-1],
+                len(self)
+                )
             )
 
             # Create order lines
@@ -111,12 +119,15 @@ class EdiSaleLineRequestRecord(models.Model):
                             raise
                         rec.write({"error": ex.name})
                 self.recompute()
-            _logger.info(
-                "%s created %s %d-%d in %.2fs, %d excess queries",
+            self.log_progress(
+                doc,
+                "%s created %s %d-%d in %.2fs, %d excess queries" \
+                %(
                 doc.name,
                 SaleLine._name,
                 r[0],
                 r[-1],
                 stats.elapsed,
                 (stats.count - 2 * len(batch)),
+                )
             )
