@@ -130,8 +130,13 @@ class EdiMoveRequestRecord(models.Model):
         cancel = Move.browse()
         for r, batch in self.batched(self.BATCH_SIZE):
             batch.precache()
-            _logger.info(
-                "%s executing %s %d-%d of %d", doc.name, self._name, r[0], r[-1], len(self)
+            self.log_progress(
+                doc,
+                "%s executing %s %d-%d of %d" \
+                %(
+                doc.name, self._name,
+                r[0], r[-1], len(self)
+                )
             )
 
             # Create, update, or cancel moves
