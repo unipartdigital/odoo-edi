@@ -681,12 +681,11 @@ class EdiDocumentProgress(models.Model):
     _name = "edi.document.progress"
     _description = "Progress of EDI document processing"
 
-    doc_id = fields.Many2one(
-        "edi.document",
+    doc_id = fields.Integer(
         string="EDI Document",
         required=True,
         readonly=True,
-        #index=True,
-        ondelete="cascade",
+        index=True,
+        help="Foreign key to edi.document. Avoided Many2one on purpose for nested sql commit.",
     )
-    progress_log = fields.Text(string="Progress log", help="EDI document processing log messages")
+    progress_log = fields.Text(string="Progress log", help="EDI document processing log messages.")
