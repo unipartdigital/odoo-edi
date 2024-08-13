@@ -605,6 +605,16 @@ class EdiDocument(models.Model):
         }
         return action
 
+    def unlink(self):
+        """Extend unlink to delete any related edi.document.progress records."""
+        super().unlink()
+
+        EDIDocProgress = self.env["edi.document.progress"]
+        if self:
+            edi_progress = EDIDocProgress.search([("doc_id", "in", self.ids)])
+            if edi_progress:
+                edi_progress.unlink()
+
 
 class EdiDocumentModel(models.AbstractModel):
     """EDI document model
