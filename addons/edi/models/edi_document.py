@@ -605,6 +605,34 @@ class EdiDocument(models.Model):
         }
         return action
 
+    @api.model
+    def action_execute_transferred_docs(self):
+        """
+        EDI documents transferred could be in 'new' or 'prep' state depending on the
+        `processing_level` of the document type. Process these documents later using this method,
+        usually triggered by a cron job. Collect documents to process that are:
+            * created by edi transfer
+            * doc type processing level is 'disabled' and doc is in 'draft' state
+            * doc type processing level is 'prepare' and doc is in 'prep' state
+        """
+        docs_to_process = self.search(
+            [
+                "|",
+                "&",
+                ("doc_type_id.processing_level", "=", "disabled"),
+                ("state", "=", "draft"),
+                "&",
+                ("doc_type_id.processing_level", "=", "prepare"),
+                ("state", "=", "prep"),
+                ("transfer_id", "!=", False),   # If DB query is slow due to negated comparison, filter those after
+            ]
+        )
+        for doc in docs_to_process:
+            _logger.info(f"Executing {doc.name}") 
+            doc.action_execute()
+            _logger.info(f"Executed {doc.name}") 
+
+
     def unlink(self):
         """Extend unlink to delete any related edi.document.progress records."""
         super().unlink()
