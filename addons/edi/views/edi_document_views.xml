@@ -228,6 +228,77 @@
       </field>
     </record>
 
+    <!-- EDI Document Processing Statistics -->
+    <!-- Form view -->
+    <record id="document_stats_form" model="ir.ui.view">
+      <field name="name">edi.document.stats.form</field>
+      <field name="model">edi.document.stats</field>
+      <field name="arch" type="xml">
+	<form string="EDI Processing Statistics" create="0" edit="0">
+      <group>
+        <group name="doc_details">
+      <field name="doc_id"/>
+      <field name="doc_type_id"/>
+      <field name="state"/>
+        </group>
+        <group name="timing">
+      <field name="time_start"/>
+      <field name="time_end"/>
+      <field name="time_total"/>
+        </group>
+      </group>
+    </form>
+      </field>
+    </record>
+
+    <!-- Tree view -->
+    <record id="document_stats_tree" model="ir.ui.view">
+      <field name="name">edi.document.stats.tree</field>
+      <field name="model">edi.document.stats</field>
+      <field name="arch" type="xml">
+    <tree string="EDI Processing Stats" default_order="id desc" create="0" edit="0">
+	  <field name="doc_id"/>
+	  <field name="doc_type_id"/>
+	  <field name="state"/>
+	  <field name="time_start"/>
+	  <field name="time_end"/>
+	  <field name="time_total"/>
+	</tree>
+      </field>
+    </record>
+
+    <!-- Search filter -->
+    <record id="document_stats_search" model="ir.ui.view">
+      <field name="name">edi.document.stats.search</field>
+      <field name="model">edi.document.stats</field>
+      <field name="arch" type="xml">
+	<search string="Search EDI Processing Stats">
+	  <field name="doc_id"/>
+	  <field name="doc_type_id"/>
+	  <field name="state"/>
+	  <field name="time_start"/>
+	  <field name="time_end"/>
+	  <field name="time_total"/>
+	  <group>
+	    <filter name="waiting" string="Waiting"
+		    domain="[('state', '=', 'waiting')]"/>
+	    <filter name="preparing" string="Preparing"
+		    domain="[('state', '=', 'preparing')]"/>
+	    <filter name="executing" string="Executing"
+		    domain="[('state', '=', 'executing')]"/>
+	  </group>
+	  <group string="Group By">
+	    <filter name="by_doc_id" string="Document" domain="[]"
+		    context="{'group_by': 'doc_id'}"/>
+	    <filter name="by_doc_type_id" string="Document Type" domain="[]"
+		    context="{'group_by': 'doc_type_id'}"/>
+	    <filter name="by_state" string="Status" domain="[]"
+		    context="{'group_by': 'state'}"/>
+	  </group>
+	</search>
+      </field>
+    </record>
+
     <!-- Action window -->
     <record id="document_action" model="ir.actions.act_window">
       <field name="name">EDI Documents</field>
@@ -249,9 +320,20 @@
       </field>
     </record>
 
+    <record id="document_stats_action" model="ir.actions.act_window">
+      <field name="name">EDI Processing Statistics</field>
+      <field name="type">ir.actions.act_window</field>
+      <field name="res_model">edi.document.stats</field>
+
+      <field name="view_mode">tree,form</field>
+      <field name="search_view_id" ref="document_stats_search"/>
+    </record>
+
     <!-- Menu item -->
     <menuitem id="document_document_menu" name="Documents"
 	      action="document_action" parent="document_menu" sequence="10"/>
+    <menuitem id="document_stats_menu" name="Processing Stats"
+	      action="document_stats_action" parent="document_menu" sequence="15"/>
 
   </data>
 </odoo>

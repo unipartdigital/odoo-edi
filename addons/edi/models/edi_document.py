@@ -790,7 +790,7 @@ class EdiDocumentStats(models.Model):
         ondelete="cascade",
         help="EDI Document for which the processing statistics are captured.",
     )
-    doc_type_id = fields.Many2one("edi.document.type", related="doc_id.doc_type_id")
+    doc_type_id = fields.Many2one("edi.document.type", related="doc_id.doc_type_id", store=True)
 
     # Processing statistics
     state = fields.Selection(
