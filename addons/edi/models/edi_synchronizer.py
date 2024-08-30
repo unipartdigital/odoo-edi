@@ -236,11 +236,14 @@ class EdiSyncRecord(models.AbstractModel):
 
         # Process records in batches for efficiency
         for r, vbatch in batched(vlist, self.BATCH_SIZE):
-
-            self.log_progress(doc, "%s preparing %s %d-%d" %(doc.name, self._name, r[0], r[-1]))
             len_r = len(r)
             total += len_r
             clear_cache_count += len_r
+
+            self.log_progress(
+                doc,
+                "%s preparing %s %d-%d" % (doc.name, self._name, r[0], r[-1]),
+            )
 
             # Add EDI lookup relationship target IDs where known
             self._add_edi_relates_vlist(vbatch)
@@ -286,13 +289,10 @@ class EdiSyncRecord(models.AbstractModel):
         # Log statistics
         stats.stop()
         excess = stats.count - count
-        _logger.info(
-            "%s prepared %s elided %d of %d, %d excess queries",
-            doc.name,
-            self._name,
-            (total - count),
-            total,
-            excess,
+        self.log_progress(
+            doc,
+            "%s prepared %s elided %d of %d, %d excess queries"
+            % (doc.name, self._name, (total - count), total, excess),
         )
         if excess >= total and total > PRECACHE_WARNING_THRESHOLD:
             _logger.warning(
@@ -319,6 +319,8 @@ class EdiSyncRecord(models.AbstractModel):
         target = self._edi_sync_target
         Target = self.browse()[target]
 
+        if doc:
+            self.log_progress(doc, total_records=len(self))
         # Identify any missing existing target records
         new = self.filtered(lambda x: not x[target])
         for r, batch in new.batched(self.BATCH_SIZE):
@@ -394,7 +396,8 @@ class EdiSyncRecord(models.AbstractModel):
                     (offset + count - 1),
                     stats.elapsed,
                     (stats.count - count)
-                    )
+                    ),
+                    records_processed=count,
                 )
                 offset += count
                 clear_cache_count += count
@@ -453,7 +456,8 @@ class EdiSyncRecord(models.AbstractModel):
                     (offset + count - 1),
                     stats.elapsed,
                     (stats.count - 2 * count)
-                    )
+                    ),
+                    records_processed=count,
                 )
                 offset += count
                 clear_cache_count += count
@@ -462,11 +466,12 @@ class EdiSyncRecord(models.AbstractModel):
                 )
 
     @api.model
-    def log_progress(self, doc, log_message):
+    def log_progress(self, doc, log_message=None, total_records=None, records_processed=None):
         """Log the progress message to console/log device and also to the EdiDocumentProgress
         instance linked to the EdiDocument to display the same in UI, while processing is ongoing."""
-        _logger.info(log_message)
-        doc.create_or_update_edi_progress(log_message)
+        if log_message:
+            _logger.info(log_message)
+        doc.create_or_update_edi_progress(log_message, total_records, records_processed)
 
 
 class EdiDeactivatorRecord(models.AbstractModel):

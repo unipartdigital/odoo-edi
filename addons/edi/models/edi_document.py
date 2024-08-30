@@ -12,6 +12,11 @@ _logger = logging.getLogger(__name__)
 
 AutodetectDocument = namedtuple("AutodetectDocument", ["type", "inputs"])
 
+PROCESSING_STATES = [
+    ("waiting", "Waiting"),
+    ("preparing", "Preparing"),
+    ("executing", "Executing")
+]
 
 class IrModel(models.Model):
     """Extend ``ir.model`` to include EDI information"""
@@ -195,11 +200,7 @@ class EdiDocument(models.Model):
         tracking=True,
     )
     processing_state = fields.Selection(
-        [
-            ("waiting", "Waiting"),
-            ("preparing", "Preparing"),
-            ("executing", "Executing")
-        ],
+        PROCESSING_STATES,
         string="Processing Status",
         readonly=True,
         index=True,
@@ -211,6 +212,9 @@ class EdiDocument(models.Model):
     )
     prepare_date = fields.Datetime(string="Prepared on", readonly=True, copy=False)
     execute_date = fields.Datetime(string="Executed on", readonly=True, copy=False)
+    processing_time_total = fields.Float(
+        string="Total processing time", compute="_compute_processing_time"
+    )
     note = fields.Text(string="Notes")
 
     # Communications
@@ -250,6 +254,8 @@ class EdiDocument(models.Model):
         string="Output Count", compute="_compute_output_count", store=True
     )
     progress_log = fields.Text(compute="_compute_progress_log", help="Document processing log messages")
+    total_records = fields.Integer(string="Total records", compute="_compute_progress_log")
+    total_records_processed = fields.Integer(string="Total records processed", compute="_compute_progress_log")
 
     # Issues (i.e. asynchronously reported errors)
     project_id = fields.Many2one(related="doc_type_id.project_id", readonly=True)
@@ -259,6 +265,12 @@ class EdiDocument(models.Model):
     rec_type_names = fields.Char(string="Record Type Names", compute="_compute_rec_type_names")
 
     fail_fast = fields.Boolean(related="doc_type_id.fail_fast", readonly=True)
+
+    # Processing timing statistics
+    doc_stat_ids = fields.One2many(
+        "edi.document.stats", "doc_id", string="Document Statistics", readonly=True, index=True
+    )
+
 
     @api.depends("input_ids", "input_ids.res_id")
     def _compute_input_count(self):
@@ -273,11 +285,14 @@ class EdiDocument(models.Model):
             doc.output_count = len(doc.output_ids)
 
     def _compute_progress_log(self):
-        """Compute the processing log messages (for UI display). Compute on the fly to avoid DB
-        reference, as it may cause deadlock."""
+        """Compute the processing log messages (for UI display), total records and total processed
+        records. Compute on the fly to avoid DB reference, as it may cause deadlock."""
         EDIDocProgress = self.env["edi.document.progress"]
         for rec in self:
-            rec.progress_log = EDIDocProgress.search([("doc_id", "=", rec.id)]).progress_log
+            edi_progress = EDIDocProgress.search([("doc_id", "=", rec.id)])
+            rec.progress_log = edi_progress.progress_log
+            rec.total_records = edi_progress.total_records
+            rec.total_records_processed = edi_progress.total_records_processed
 
     @api.depends(
         "doc_type_id",
@@ -310,13 +325,31 @@ class EdiDocument(models.Model):
         vals = dict(self.fields_get(allfields=["state"])["state"]["selection"])
         return vals[self.state]
 
+    @api.depends("create_date", "execute_date")
+    def _compute_processing_time(self):
+        """Compute the total time (in hrs) took to process the document from receiving till completion"""
+        for rec in self:
+            if rec.execute_date:
+                diff = rec.execute_date - rec.create_date 
+                rec.processing_time_total = diff.total_seconds() / 3600.0 # in hrs for `float_time`
+            else:
+                rec.processing_time_total = 0
+
     @api.model_create_multi
     def create(self, vals_list):
-        """Create record (generating name automatically if needed)"""
+        """Create record (generating name automatically if needed).
+        Create associated statistics collection record as well."""
+        EdiDocumentStats = self.env["edi.document.stats"]
+       
         docs = super().create(vals_list)
         for doc in docs:
             if not doc.name:
                 doc.name = doc.doc_type_id.sequence_id.next_by_id()
+            # Create associated statistics tracker
+            EdiDocumentStats.create(
+                {"doc_id": doc.id, "state": "waiting", "time_start": doc.create_date}
+            )
+
         return docs
 
     def copy(self, default=None):
@@ -390,10 +423,36 @@ class EdiDocument(models.Model):
         """
         self.ensure_one()
         if self.processing_state != processing_state:
+            self.update_processing_stats(processing_state)
             self.processing_state = processing_state
             self.env.cr.commit()
 
-    def create_or_update_edi_progress(self, log_message=None):
+    def update_processing_stats(self, processing_state):
+        """Track the start/end/total time for waiting/prepare/execute."""
+        EdiDocumentStats = self.env["edi.document.stats"]
+
+        self.ensure_one()
+        assert(self.processing_state != processing_state)
+        vals_stat = {}
+        now = fields.Datetime.now()
+        
+        # Stop the current state's processing time
+        current_state = self.processing_state or "waiting"
+        current_stat_id = self.doc_stat_ids.filtered(lambda ds: ds.state == current_state)
+        current_stat_id.time_end = now
+        # Start new state's processing time. If state is empty, current state was stopped
+        if processing_state:
+            new_stat_id = self.doc_stat_ids.filtered(lambda ds: ds.state == processing_state)
+            if new_stat_id:
+                # Reset start/end time of an existing (possibly failed) processing stat
+                new_stat_id.write({"time_start": False, "time_end": False})
+            else:
+                EdiDocumentStats.create(
+                    {"doc_id": self.id, "state": processing_state, "time_start": now}
+                )
+
+
+    def create_or_update_edi_progress(self, log_message=None, total_records=None, records_processed=None):
         """EDI records processing is triggered in `prepare()` and `execute()` which creates a cursor
         savepoint to atomically commit/rollback the created/updated records. To report the progress
         of long running executions, it is required to continually update the so-far-processed status
@@ -405,10 +464,15 @@ class EdiDocument(models.Model):
 
         In order to commit change to 'another object' (EdiDocumentProgress in this case), create
         another DB cursor. Transaction is committed on closing the cursor. This leaves the
-        encompassing transaction (EDI records processing) undisturbed."""
+        encompassing transaction (EDI records processing) undisturbed.
+
+        Also set the total edi records and total processed records, if provided. They are added to
+        the document's totals as the calls are from linked (multiple) record type objects.
+        """
         self.ensure_one()
         towrite = self.env.all.towrite.copy()
         tocompute = self.env.all.tocompute.copy()
+        # TODO: use `with api.Environment.manage():` instead of towrite/tocompute manipulation
         with self.pool.cursor() as temp_cr:
             # NOTE: this method does a commit using another cursor, but it is called from inside a
             # savepoint. Odoo core has a bug that it commits all pending writes without considering
@@ -423,11 +487,19 @@ class EdiDocument(models.Model):
             if not edi_progress:
                 edi_progress = EDIDocProgress.create({"doc_id": temp_self.id})
             # Update with the message, or reset it
-            updated_log = ""
+            vals = {}
+            # Reset all progress if no parameters are passed
+            if not log_message and total_records is None and records_processed is None:
+                vals["progress_log"] = ""
             if log_message:
-                updated_log = "\n".join([edi_progress.progress_log or "", log_message]).lstrip()
+                vals["progress_log"] = "\n".join([edi_progress.progress_log or "", log_message]).lstrip()
+            if total_records is not None:
+                vals["total_records"] = edi_progress.total_records + total_records
+            if records_processed is not None:
+                vals["total_records_processed"] = edi_progress.total_records_processed + records_processed
+
             try:
-                edi_progress.write({"progress_log": updated_log})
+                edi_progress.write(vals)
             except:
                 temp_cr.rollback()
 
@@ -436,7 +508,7 @@ class EdiDocument(models.Model):
         self.env.all.tocompute = tocompute
 
     def reset_progress(self):
-        # Reset the existing log messages
+        # Reset the existing log messages. Passing no parameters will reset all progress information
         self.create_or_update_edi_progress()
 
     def action_prepare(self):
@@ -699,3 +771,54 @@ class EdiDocumentProgress(models.Model):
         help="Foreign key to edi.document. Avoided Many2one on purpose for nested sql commit.",
     )
     progress_log = fields.Text(string="Progress log", help="EDI document processing log messages.")
+    total_records = fields.Integer(string="Total records", readonly=True)
+    total_records_processed = fields.Integer(string="Total records processed", readonly=True)
+
+class EdiDocumentStats(models.Model):
+    """EDI Document processing statistics such as start/end of waiting/prepare/execute, total time
+    for each processing stage, etc."""
+
+    _name = "edi.document.stats"
+    _description = "EDI Document Processing Statistics"
+
+    doc_id = fields.Many2one(
+        "edi.document",
+        string="EDI Document",
+        required=True,
+        readonly=True,
+        index=True,
+        ondelete="cascade",
+        help="EDI Document for which the processing statistics are captured.",
+    )
+    doc_type_id = fields.Many2one("edi.document.type", related="doc_id.doc_type_id")
+
+    # Processing statistics
+    state = fields.Selection(
+        PROCESSING_STATES,
+        string="Status",
+        readonly=True,
+        index=True,
+    )
+    time_start = fields.Datetime(string="Start", readonly=True, help="Start time of current state")
+    time_end   = fields.Datetime(string="End", readonly=True, help="End time of current state")
+    time_total = fields.Float(
+        string="Total time", compute="_compute_total_time",
+        store=True, readonly=True, help="Total processing time in hours"
+    )
+
+    _sql_constraints = [
+        (
+            "doc_state_uniq",
+            "unique (doc_id, state)",
+            "Only one record for a document in a particular state allowed",
+        )
+    ]
+
+    @api.depends("time_start", "time_end")
+    def _compute_total_time(self):
+        """Compute the total time (in hrs) the document was in its current state"""
+        for rec in self:
+            if rec.time_start:
+                diff = (rec.time_end or fields.Datetime.now()) - rec.time_start
+                rec.time_total = diff.total_seconds() / 3600.0  # in hrs for `float_time` widget
+

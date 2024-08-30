@@ -139,5 +139,8 @@ class EdiRawDocument(models.AbstractModel):
         # Import data
         recs = self.import_data(doc)
 
+        doc.create_or_update_edi_progress(total_records=len(recs))
+
         # Create EDI records for imported records
-        EdiRawRecord.create(list(self._get_values(doc, recs)))
+        created_recs = EdiRawRecord.create(list(self._get_values(doc, recs)))
+        doc.create_or_update_edi_progress(records_processed=len(created_recs))

@@ -83,6 +83,7 @@
 		<field name="create_date" readonly="1"/>
 		<field name="prepare_date"/>
 		<field name="execute_date"/>
+		<field name="processing_time_total" widget="float_time" options="{'displaySeconds': True}"/>
 	      </group>
 	    </group>
 	    <group name="info">
@@ -95,8 +96,20 @@
 	    <notebook name="progress" groups="edi.group_edi_document_support">
 	      <page name="processing_status" string="Status">
 	        <group>
+              <field name="total_records"/>
+              <field name="total_records_processed"/>
 	          <field name="progress_log"/>
 	        </group>
+	      </page>
+	      <page name="processing_time" string="Timing">
+	        <field name="doc_stat_ids">
+	          <tree>
+	            <field name="state"/>
+	            <field name="time_start"/>
+	            <field name="time_end"/>
+	            <field name="time_total" widget="float_time" options="{'displaySeconds': True}"/>
+	          </tree>
+	        </field>
 	      </page>
 	    </notebook>
 	  </sheet>
