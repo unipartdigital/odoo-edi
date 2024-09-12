@@ -43,7 +43,7 @@ class TestEdiSequentialExecution(EdiCase):
         )
         self.assertEqual(doc2.state, "draft")
 
-        # Try to process second document, which shoud remain in 'draft' state
+        # Try to process second document, which should remain in 'draft' state
         doc2.action_execute()
         self.assertEqual(doc2.state, "draft")
         # Process the first document and try second document again
