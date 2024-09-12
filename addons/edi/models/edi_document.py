@@ -118,6 +118,10 @@ class EdiDocumentType(models.Model):
         copy=False,
         tracking=True,
     )
+    execute_sequentially = fields.Boolean(
+        string="Sequential Execution Required", help="Document can only be processed if all "\
+        "previous documents of the same type have been completed", default=False
+    )
 
     _sql_constraints = [("model_uniq", "unique (model_id)", "The document model must be unique")]
 
@@ -583,10 +587,14 @@ class EdiDocument(models.Model):
         Parse EDI records and update database.
         """
         self.ensure_one()
+        if not self.check_sequential_exec_allowed():
+            return False
+
         # TODO Consider a better way of getting around the permissions
         self = self.sudo()
         # Lock document
         self.lock_for_action()
+
         # Automatically prepare document if needed
         if self.state == "draft":
             prepared = self.action_prepare()
@@ -686,6 +694,29 @@ class EdiDocument(models.Model):
             edi_progress = EDIDocProgress.search([("doc_id", "in", self.ids)])
             if edi_progress:
                 edi_progress.unlink()
+
+    def check_sequential_exec_allowed(self):
+        """If document type has sequential execution set, ensure previous documents of same type are
+        already processed (done/cancel)."""
+        if self.doc_type_id.execute_sequentially:
+            previous_docs = self.search_read(
+                [
+                    ("doc_type_id", "in", self.doc_type_id.ids), # Same document type
+                    ("state", "in", ("draft", "prep")),
+                    ("id", "<", self.id), # Previous documents _should_ have earlier ids
+                ],
+                ["name"],
+            )
+            if previous_docs:
+                self.message_post(
+                    body=_(
+                        f"Not processing {self.name}, waiting for previous documents: "
+                        f"{', '.join([doc['name'] for doc in previous_docs])}"
+                    ),
+                    content_subtype="plaintext",
+                )
+                return False
+        return True
 
 
 class EdiDocumentModel(models.AbstractModel):

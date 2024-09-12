@@ -21,6 +21,7 @@
 		<field name="rec_type_ids" widget="many2many_tags"/>
 		<field name="sequence_id"/>
 		<field name="processing_level"/>
+		<field name="execute_sequentially"/>
 	      </group>
 	      <group name="issues" string="Issues">
 		<field name="project_id"/>
