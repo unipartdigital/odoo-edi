@@ -12,3 +12,4 @@ from . import test_iterators
 from . import test_partner
 from . import test_raw
 from . import test_sap
+from . import test_edi_sequential_execution
