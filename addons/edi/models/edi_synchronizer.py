@@ -308,6 +308,15 @@ class EdiSyncRecord(models.AbstractModel):
         """Process matched target records"""
         pass
 
+    def filter_changed_vals(self, vals, comparator, target_obj):
+        """Return only the changed values of a record.
+           :param vals: dict {field: value, ...} (suitable for `write()` etc.)
+           :param comparator: generic record fields comparator
+           :param target_obj: target record/object
+           :returns: dict of changed {field: value, ...}
+        """
+        return {k: v for k, v in vals.items() if not comparator[k](target_obj[k], v)}
+
     def execute(self):
         """Execute records"""
         super().execute()
@@ -318,6 +327,8 @@ class EdiSyncRecord(models.AbstractModel):
         # Get target model
         target = self._edi_sync_target
         Target = self.browse()[target]
+        # Construct comparator for target model
+        comparator = Comparator(Target, self.env)
 
         if doc:
             self.log_progress(doc, total_records=len(self))
@@ -370,21 +381,25 @@ class EdiSyncRecord(models.AbstractModel):
                     vals_list = [rec.target_values(rec._record_values()) for rec in batch]
                     if doc.fail_fast:
                         for rec, vals in zip(batch, vals_list):
-                            rec[target].write(vals)
+                            changed_vals = self.filter_changed_vals(vals, comparator, rec[target])
+                            if changed_vals:
+                                rec[target].write(changed_vals)
                     else:
                         for rec, vals in zip(batch, vals_list):
-                            try:
-                                # We use a savepoint here to handle the case where
-                                # vals violate an api.constrains on the target.
-                                # These constraints are checked after updates are
-                                # sent to the database, so the offending change
-                                # must be rolled back for the affected object.
-                                with self.env.cr.savepoint():
-                                    rec[target].write(vals)
-                            except ValidationError as ex:
-                                rec[target].invalidate_cache()
-                                rec.error = ex.name
-                                _logger.exception("Failed to update for %r, %s", rec, rec.name)
+                            changed_vals = self.filter_changed_vals(vals, comparator, rec[target])
+                            if changed_vals:
+                                try:
+                                    # We use a savepoint here to handle the case where
+                                    # vals violate an api.constrains on the target.
+                                    # These constraints are checked after updates are
+                                    # sent to the database, so the offending change
+                                    # must be rolled back for the affected object.
+                                    with self.env.cr.savepoint():
+                                        rec[target].write(changed_vals)
+                                except ValidationError as ex:
+                                    rec[target].invalidate_cache()
+                                    rec.error = ex.name
+                                    _logger.exception("Failed to update for %r, %s", rec, rec.name)
                     self.recompute()
                 self.log_progress(
                     doc,
