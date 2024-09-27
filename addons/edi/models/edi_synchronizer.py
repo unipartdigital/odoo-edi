@@ -3,11 +3,10 @@
 import logging
 from odoo import api, fields, models
 from odoo.osv import expression
+from odoo.tools.safe_eval import safe_eval
 
 from odoo.exceptions import ValidationError
 from ..tools import batched, Comparator
-
-import json
 
 _logger = logging.getLogger(__name__)
 
@@ -105,8 +104,8 @@ class EdiSyncRecord(models.AbstractModel):
     _inherit = "edi.record"
     _description = "EDI Synchronizer Record"
 
-    _changed_vals = fields.Text(string="Changed target record values")
-    """Holds only the changed values for existing records. Only these
+    changed_fields = fields.Text(string="Changed target record fields")
+    """Holds only the changed fields for existing records. Only these
     values will be written during `execute`, to improve performance and
     avoid unnecessarily triggering constraint methods.
     """
@@ -273,7 +272,7 @@ class EdiSyncRecord(models.AbstractModel):
                     target_vals = self.target_values(record_vals)
                     changed_vals = {k: v for k, v in target_vals.items() if not comparator[k](target[k], v)}
                     if changed_vals:
-                        record_vals["_changed_vals"] = json.dumps(changed_vals)
+                        record_vals["changed_fields"] = str(list(changed_vals.keys()))
                     else:
                         continue
 
@@ -378,13 +377,16 @@ class EdiSyncRecord(models.AbstractModel):
                     )
                 )
                 with self.statistics() as stats:
-                    vals_list = [rec.target_values(rec._record_values()) for rec in batch]
+                    vals_list = [
+                        {  k: v
+                            for k,v in rec.target_values(rec._record_values()).items()
+                            if k in safe_eval(rec.changed_fields)
+                        }
+                        for rec in batch
+                    ]
                     if doc.fail_fast:
                         for rec, vals in zip(batch, vals_list):
-                            if rec._changed_vals:
-                                rec[target].write(json.loads(rec._changed_vals))
-                            else:
-                                rec[target].write(vals)
+                            rec[target].write(vals)
                     else:
                         for rec, vals in zip(batch, vals_list):
                             try:
@@ -394,10 +396,7 @@ class EdiSyncRecord(models.AbstractModel):
                                 # sent to the database, so the offending change
                                 # must be rolled back for the affected object.
                                 with self.env.cr.savepoint():
-                                    if rec._changed_vals:
-                                        rec[target].write(json.loads(rec._changed_vals))
-                                    else:
-                                        rec[target].write(vals)
+                                    rec[target].write(vals)
                             except ValidationError as ex:
                                 rec[target].invalidate_cache()
                                 rec.error = ex.name
