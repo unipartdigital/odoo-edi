@@ -94,6 +94,12 @@ class EdiDocumentType(models.Model):
         string="Fail Fast", help="End document execution immediately on error", default=True
     )
 
+    # Control behaviour of records can be created successfully if at least an error occurs
+    fail_end = fields.Boolean(
+        string="Fail End",
+        help="End document execution at the end on error", default=False
+    )
+
     # Optionally enforce filename globs
     enforce_filename = fields.Boolean(
         string="Enforce Document Filenames",
@@ -169,6 +175,16 @@ class EdiDocumentType(models.Model):
             doc.action_execute()
             docs += doc
         return docs
+
+    @api.onchange("fail_fast", "fail_end")
+    def onchange_fail_configurations(self):
+        """
+        Making sure that fail configurations cannot be both active at same time
+        """
+        if self.fail_fast:
+            self.fail_end = False
+        elif self.fail_end:
+            self.fail_fast = False
 
 
 class EdiDocument(models.Model):
@@ -269,6 +285,7 @@ class EdiDocument(models.Model):
     rec_type_names = fields.Char(string="Record Type Names", compute="_compute_rec_type_names")
 
     fail_fast = fields.Boolean(related="doc_type_id.fail_fast", readonly=True)
+    fail_end = fields.Boolean(related="doc_type_id.fail_end", readonly=True)
 
     # Processing timing statistics
     doc_stat_ids = fields.One2many(

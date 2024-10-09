@@ -25,7 +25,8 @@
 							</group>
 							<group name="issues" string="Issues">
 								<field name="project_id"/>
-								<field name="fail_fast"/>
+								<field name="fail_fast" attrs="{'invisible': [('fail_end', '=', True)]}"/>
+								<field name="fail_end" attrs="{'invisible': [('fail_fast', '=', True)]}"/>
 							</group>
 							<group name="extras" string="Extras"/>
 						</group>
