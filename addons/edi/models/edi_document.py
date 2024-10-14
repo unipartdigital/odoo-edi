@@ -4,7 +4,7 @@ from base64 import b64decode, b64encode
 from collections import namedtuple
 import logging
 from odoo import api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 from odoo.tools.translate import _
 from ..tools import NoRecordValuesError
 
@@ -130,6 +130,17 @@ class EdiDocumentType(models.Model):
     )
 
     _sql_constraints = [("model_uniq", "unique (model_id)", "The document model must be unique")]
+
+    @api.constrains("fail_fast", "fail_end")
+    def _check_fail_configurations(self):
+        """
+        Constrain configuration fields not to be enabled both at same time
+        """
+        for doc in self:
+            if doc.fail_fast and doc.fail_end:
+                raise ValidationError(_(
+                    "Fail fast and Fail end cannot be both True at same time on document %s"
+                ) % doc.name)
 
     @api.model
     def autocreate(self, inputs, allow_process=True):
@@ -420,12 +431,31 @@ class EdiDocument(models.Model):
     def execute_records(self):
         """Execute records"""
         self.ensure_one()
+        if self.fail_end:
+            with self.env.cr.savepoint():
+                summary_errors = self._execute_records()
+                if summary_errors:
+                    raise ValidationError(_("%s") % "<br/>".join(summary_errors))
+        else:
+            summary_errors = self._execute_records()
+            # Executing the document by ignoring the ones with error and logging
+            # in audit trails all errors found.
+            if summary_errors:
+                self.sudo().with_context(tracking_disable=False).message_post(
+                    body="<br/>".join(summary_errors), content_subtype="plaintext"
+                )
+
+    def _execute_records(self):
+        summary_errors = []
         for rec_type in self.doc_type_id.rec_type_ids:
             RecModel = self.env[rec_type.model_id.model]
             recs = RecModel.search([("doc_id", "=", self.id)])
             with self.statistics() as stats:
                 recs.execute()
                 self.recompute()
+            if not self.fail_fast:
+                recs_error = recs.filtered(lambda rc: rc.error)
+                summary_errors += recs_error.mapped("error")
             count = len(recs)
             if count:
                 _logger.info(
@@ -437,6 +467,7 @@ class EdiDocument(models.Model):
                     stats.count,
                     (stats.count / count),
                 )
+        return summary_errors
 
     def commit_processing_state_change(self, processing_state=""):
         """
