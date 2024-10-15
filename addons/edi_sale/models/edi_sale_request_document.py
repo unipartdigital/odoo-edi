@@ -103,10 +103,10 @@ class EdiSaleRequestDocument(models.AbstractModel):
         SaleRequestRecord = self.sale_request_record_model(doc)
         reqs = SaleRequestRecord.search([("doc_id", "=", doc.id)])
 
-        if not doc.fail_fast:
+        if not doc.fail_fast and not doc.fail_end:
             self.remove_sales_for_invalid_partner_updates(doc)
             self.remove_empty_orders(doc, reqs)
-            if self.report_invalid_records(doc):
+            if self.exist_invalid_records(doc):
                 self._clear_errors(doc)
 
         # Automatically confirm sale orders, if applicable
@@ -162,9 +162,8 @@ class EdiSaleRequestDocument(models.AbstractModel):
         Partner.search(domain).unlink()
         return
 
-    def report_invalid_records(self, doc):
-        """Post a message listing records that were not processed.
-
+    def exist_invalid_records(self, doc):
+        """
         Returns True if there are records with errors, False otherwise.
         """
         PartnerRecord = self.partner_record_model(doc)
@@ -175,17 +174,6 @@ class EdiSaleRequestDocument(models.AbstractModel):
         lines = SaleLineRequestRecord.search(error_domain)
         orders = SaleRequestRecord.search(error_domain)
         partners = PartnerRecord.search(error_domain)
-        message = []
-        if lines:
-            message.extend(self._build_invalid_order_lines_report(lines))
-        if orders:
-            message.extend(self._build_invalid_orders_report(orders))
-        if partners:
-            message.extend(self._build_invalid_partners_report(partners))
-        if message:
-            doc.sudo().with_context(tracking_disable=False).message_post(
-                body="\n".join(message), content_subtype="plaintext"
-            )
         return any([lines, orders, partners])
 
     def _build_invalid_order_lines_report(self, lines):
