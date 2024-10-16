@@ -6,6 +6,7 @@ from odoo.osv import expression
 
 from odoo.exceptions import ValidationError
 from ..tools import batched, Comparator
+from psycopg2 import IntegrityError
 
 _logger = logging.getLogger(__name__)
 
@@ -396,10 +397,13 @@ class EdiSyncRecord(models.AbstractModel):
                                     # must be rolled back for the affected object.
                                     with self.env.cr.savepoint():
                                         rec[target].write(changed_vals)
-                                except ValidationError as ex:
+                                except (ValidationError, IntegrityError) as ex:
                                     rec[target].invalidate_cache()
-                                    rec.error = ex.name
-                                    _logger.exception("Failed to update for %r, %s", rec, rec.name)
+                                    if hasattr(ex, "pgerror"):
+                                        error_name = ex.pgerror
+                                    else:
+                                        error_name = ex.name
+                                    rec.set_error_message(error_name, "update")
                     self.recompute()
                 self.log_progress(
                     doc,
@@ -449,11 +453,20 @@ class EdiSyncRecord(models.AbstractModel):
                         bad_recs = batch.browse()
                         for rec, vals in zip(batch, vals_list):
                             try:
-                                instance = Target.create(vals)
-                                targets.append(instance)
-                            except ValidationError as ex:
-                                _logger.exception("Failed to create for %r, %s", rec, rec.name)
-                                rec.error = ex.name
+                                # We use a savepoint here to handle the case where
+                                # vals violate an api.constrains on the target.
+                                # These constraints are checked after updates are
+                                # sent to the database, so the offending change
+                                # must be rolled back for the affected object.
+                                with self.env.cr.savepoint():
+                                    instance = Target.create(vals)
+                                    targets.append(instance)
+                            except (ValidationError, IntegrityError) as ex:
+                                if hasattr(ex, "pgerror"):
+                                    error_name = ex.pgerror
+                                else:
+                                    error_name = ex.name
+                                rec.set_error_message(error_name, "create")
                                 bad_recs |= rec
                         if bad_recs:
                             batch -= bad_recs
@@ -487,6 +500,22 @@ class EdiSyncRecord(models.AbstractModel):
         if log_message:
             _logger.info(log_message)
         doc.create_or_update_edi_progress(log_message, total_records, records_processed)
+
+    def set_error_message(self, error_message, log_mode):
+        """
+        Error message which is caught in exception from ValidationError or IntegrityError
+        """
+        towrite = self.env.all.towrite.copy()
+        tocompute = self.env.all.tocompute.copy()
+        with self.pool.cursor() as temp_cr:
+            temp_self = self.with_env(self.env(cr=temp_cr))
+            temp_self.env.all.towrite.clear()
+            temp_self.env.all.tocompute.clear()
+            self.error = error_message
+            _logger.exception("Failed to %s for %r, %s", log_mode, self, self.name)
+        # Restore the original records to write in the main transaction
+        self.env.all.towrite = towrite
+        self.env.all.tocompute = tocompute
 
 
 class EdiDeactivatorRecord(models.AbstractModel):
