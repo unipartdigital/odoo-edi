@@ -122,7 +122,6 @@ class EdiDocumentType(models.Model):
         "  This can be used to check that the file is syntactically correct."\
         "* Execute: automatically process, as if `allow_process` is True on `edi.transfer`.",
         copy=False,
-        tracking=True,
     )
     execute_sequentially = fields.Boolean(
         string="Sequential Execution Required", help="Document can only be processed if all "\
