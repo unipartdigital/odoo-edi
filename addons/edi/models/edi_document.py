@@ -127,6 +127,9 @@ class EdiDocumentType(models.Model):
         string="Sequential Execution Required", help="Document can only be processed if all "\
         "previous documents of the same type have been completed", default=False
     )
+    one_document_per_attachment = fields.Boolean(
+        string="One Document Per Attachment", help="Create one Document per attachment ", default=False
+    )
 
     _sql_constraints = [("model_uniq", "unique (model_id)", "The document model must be unique")]
 
@@ -171,9 +174,15 @@ class EdiDocumentType(models.Model):
                 doc_create_data.update({
                     "processing_state": "waiting"
                 })
-            doc = Document.create(doc_create_data)
-            autodetect.inputs.sudo().write({"res_id": doc.id})
-            docs += doc
+            if autodetect.type.one_document_per_attachment:
+                for input in autodetect.inputs:
+                    doc = Document.create(doc_create_data)
+                    input.sudo().write({"res_id": doc.id})
+                    docs += doc
+            else:
+                doc = Document.create(doc_create_data)
+                autodetect.inputs.sudo().write({"res_id": doc.id})
+                docs += doc
         return docs
 
     def autoemit(self):

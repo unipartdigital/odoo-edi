@@ -59,6 +59,12 @@ class TestAutocreate(EdiCase):
         )
         self.assertEqual(list(docs), list(EdiDocument.search([("id", "in", docs.ids)])))
 
+    def test_individual_document_per_file(self):
+        """Create indiviual document per file of autocreated documents"""
+        self.doc_type_unknown.one_document_per_attachment = True
+        docs = self.autocreate("dummy.txt", "hello_world.txt")
+        self.assertEqual(len(docs), 2)
+
     def test_wizard_create(self):
         """Autocreate via wizard"""
         EdiDocument = self.env["edi.document"]
