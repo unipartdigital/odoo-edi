@@ -57,9 +57,9 @@ class EdiPartnerRecord(models.Model):
     def target_values(self, record_vals):
         """Construct ``res.partner`` field value dictionary"""
         partner_vals = super().target_values(record_vals)
-        partner_vals.update(
-            {"name": record_vals["full_name"], "title": record_vals.get("title_id")}
-        )
+        partner_vals["title"] = record_vals.get("title_id")
+        if "full_name" in record_vals:
+            partner_vals["name"] = record_vals["full_name"]
         return partner_vals
 
     def missing_edi_relates_title_key(self, rel, key):
