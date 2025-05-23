@@ -69,7 +69,7 @@ class EdiPickRequestRecord(models.Model):
         pick_type = PickingType.browse(record_vals["pick_type_id"])
         pick_vals.update(
             {
-                "origin": record_vals["name"],
+                "origin": self.pick_id.origin,
                 "picking_type_id": pick_type.id,
                 "location_id": pick_type.default_location_src_id.id,
                 "location_dest_id": pick_type.default_location_dest_id.id,
