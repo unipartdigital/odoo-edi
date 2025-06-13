@@ -191,7 +191,7 @@ class EdiCase(common.SavepointCase):
 
         # Delete the raised issue
         new_issue_ids.unlink()
-    
+
     @classmethod
     def _set_test_file_directory(cls, path):
         """
@@ -203,4 +203,16 @@ class EdiCase(common.SavepointCase):
         path = get_resource_path(module, "tests", path)
         if path:
             cls.files = pathlib.Path(path)
+
+    @classmethod
+    @contextmanager
+    def _temporary_test_file_directory(cls, path):
+        """Temporarily change path for test files."""
+        files = cls.files
+        try:
+            cls._set_test_file_directory(path)
+            yield
+        finally:
+            cls._set_test_file_directory(files)
+
 
