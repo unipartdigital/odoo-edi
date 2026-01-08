@@ -485,7 +485,8 @@ class EdiDocument(models.Model):
         if self.processing_state != processing_state:
             self.update_processing_stats(processing_state)
             self.processing_state = processing_state
-            self.env.cr.commit()
+            if not self._context.get("bypass_edi_commit"):
+                self.env.cr.commit()
 
     def update_processing_stats(self, processing_state):
         """Track the start/end/total time for waiting/prepare/execute."""
