@@ -12,18 +12,5 @@
                 (4, ref('edi.group_edi_document_support')),
             ]"/>
         </record>
-
-        <record id="base.user_admin" model="res.users">
-            <field name="groups_id" eval=
-            "[
-                (4, ref('edi.group_edi_document_type_delete')),
-                (4, ref('edi.group_edi_document_delete')),
-                (4, ref('edi.group_edi_document_autocreate')),
-                (4, ref('edi.group_edi_gateway_delete')),
-                (4, ref('edi.group_edi_transfer_delete')),
-                (4, ref('edi.group_edi_document_support')),
-            ]"/>
-        </record>
-
     </data>
 </odoo>
