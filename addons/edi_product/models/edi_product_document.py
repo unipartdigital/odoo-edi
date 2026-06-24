@@ -1,7 +1,7 @@
 """EDI product documents"""
 
-from odoo import api, models
-
+from odoo import api, models, _
+from odoo.exceptions import ValidationError
 
 class EdiProductDocument(models.AbstractModel):
     """EDI product document
@@ -37,7 +37,7 @@ class EdiProductDocument(models.AbstractModel):
         return self.record_model(doc, supermodel=supermodel)
 
     @api.model
-    def product_record_values(self, _data):
+    def product_record_values_csv(self, _data):
         """Construct EDI product record value dictionaries
 
         Must return an iterable of dictionaries, each of which could
@@ -50,11 +50,11 @@ class EdiProductDocument(models.AbstractModel):
     def prepare(self, doc):
         """Prepare document"""
         super().prepare(doc)
-        self.product_record_model(doc).prepare(
-            doc,
-            (
-                record_vals
-                for _fname, data in doc.inputs()
-                for record_vals in self.product_record_values(data)
-            ),
-        )
+        for fname, data in doc.inputs():
+            *__, file_extension = fname.rpartition(".")
+            file_extension = file_extension.lower()
+            try:
+                adapter_method = getattr(self, f"product_record_values_{file_extension}")
+            except AttributeError:
+                raise ValidationError(_("File extension %s is not supported by this EDI document type") %file_extension)
+            self.product_record_model(doc).prepare(doc, adapter_method(data))
