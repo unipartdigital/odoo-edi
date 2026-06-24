@@ -76,6 +76,7 @@ class EdiProductSapMatmas01(models.AbstractModel):
         return [attachments] if attachments else []
 
     @api.model
+    # SAP Idoc has no file extension, so no suffix is added here.
     def product_record_values(self, data):
         """Construct EDI product record value dictionaries"""
         idoc = Matmas01(data)
