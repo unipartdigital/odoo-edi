@@ -1,6 +1,7 @@
 """EDI stock transfer request tests"""
 
 from .common import EdiPickCase
+from odoo.tools import mute_logger
 
 
 class TestPickRequest(EdiPickCase):
@@ -46,6 +47,7 @@ class TestPickRequest(EdiPickCase):
         with self.assertRaisesIssue(doc):
             doc.action_prepare()
 
+    @mute_logger("odoo.addons.edi.models.edi_issues")
     def test_dummy(self):
         """Test document with dummy input attachment"""
         EdiDocument = self.env["edi.document"]
