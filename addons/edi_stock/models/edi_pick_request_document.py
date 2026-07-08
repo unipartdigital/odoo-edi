@@ -1,6 +1,7 @@
 """EDI stock transfer request documents"""
 
-from odoo import api, models
+from odoo import api, models, _
+from odoo.exceptions import ValidationError
 
 
 class EdiPickRequestDocument(models.AbstractModel):
@@ -42,7 +43,7 @@ class EdiPickRequestDocument(models.AbstractModel):
         return self.record_model(doc, supermodel=supermodel)
 
     @api.model
-    def pick_request_record_values(self, _data):
+    def pick_request_record_values_csv(self, _data):
         """Construct EDI pick request record value dictionaries
 
         Must return an iterable of dictionaries, each of which could
@@ -52,7 +53,7 @@ class EdiPickRequestDocument(models.AbstractModel):
         return self.no_record_values()
 
     @api.model
-    def move_request_record_values(self, _data):
+    def move_request_record_values_csv(self, _data):
         """Construct EDI move request record value dictionaries
 
         Must return an iterable of dictionaries, each of which could
@@ -65,19 +66,13 @@ class EdiPickRequestDocument(models.AbstractModel):
     def prepare(self, doc):
         """Prepare document"""
         super().prepare(doc)
-        self.pick_request_record_model(doc).prepare(
-            doc,
-            (
-                record_vals
-                for _fname, data in doc.inputs()
-                for record_vals in self.pick_request_record_values(data)
-            ),
-        )
-        self.move_request_record_model(doc).prepare(
-            doc,
-            (
-                record_vals
-                for _fname, data in doc.inputs()
-                for record_vals in self.move_request_record_values(data)
-            ),
-        )
+        for fname, data in doc.inputs():
+            *__, file_extension = fname.rpartition(".")
+            file_extension = file_extension.lower()
+            try:
+                pick_adapter_method = getattr(self, f"pick_request_record_values_{file_extension}")
+                move_adapter_method = getattr(self, f"move_request_record_values_{file_extension}")
+            except AttributeError:
+                raise ValidationError(_("File extension %s is not supported by this EDI document type") %file_extension)
+            self.pick_request_record_model(doc).prepare(doc, pick_adapter_method(data))
+            self.move_request_record_model(doc).prepare(doc, move_adapter_method(data))
