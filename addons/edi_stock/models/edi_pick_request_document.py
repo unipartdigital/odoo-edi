@@ -63,6 +63,15 @@ class EdiPickRequestDocument(models.AbstractModel):
         return self.no_record_values()
 
     @api.model
+    def postprocess_record_values_csv(self, pick_vlist, move_vlist):
+        """
+        Postprocess pick and move record values.
+        This is a hook designed to be extended, for instance - if move or pick value need to be compared
+        and merged in place.
+        """
+        pass
+
+    @api.model
     def prepare(self, doc):
         """Prepare document"""
         super().prepare(doc)
@@ -72,7 +81,11 @@ class EdiPickRequestDocument(models.AbstractModel):
             try:
                 pick_adapter_method = getattr(self, f"pick_request_record_values_{file_extension}")
                 move_adapter_method = getattr(self, f"move_request_record_values_{file_extension}")
+                postprocess_adapter_method = getattr(self, f"postprocess_record_values_{file_extension}")
             except AttributeError:
                 raise ValidationError(_("File extension %s is not supported by this EDI document type") %file_extension)
-            self.pick_request_record_model(doc).prepare(doc, pick_adapter_method(data))
-            self.move_request_record_model(doc).prepare(doc, move_adapter_method(data))
+            pick_data = pick_adapter_method(data)
+            move_data = move_adapter_method(data)
+            postprocess_adapter_method(pick_data, move_data)
+            self.pick_request_record_model(doc).prepare(doc, pick_data)
+            self.move_request_record_model(doc).prepare(doc, move_data)
