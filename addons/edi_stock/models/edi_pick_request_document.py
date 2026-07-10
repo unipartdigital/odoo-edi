@@ -1,4 +1,5 @@
 """EDI stock transfer request documents"""
+import csv
 
 from odoo import api, models, _
 from odoo.exceptions import ValidationError
@@ -43,24 +44,35 @@ class EdiPickRequestDocument(models.AbstractModel):
         return self.record_model(doc, supermodel=supermodel)
 
     @api.model
-    def pick_request_record_values_csv(self, _data):
+    def pick_request_record_values_csv(self, doc, data):
         """Construct EDI pick request record value dictionaries
 
         Must return an iterable of dictionaries, each of which could
         passed to :meth:`~odoo.models.Model.create` in order to create
         an EDI pick request record.
         """
-        return self.no_record_values()
+        reader = csv.DictReader(data.decode("utf-8-sig").splitlines())
+        self.check_headings_csv(reader.fieldnames)
+        picking_type = self.get_picking_type()
+        return (
+            self.prepare_order_csv(doc, line, picking_type)
+            for line in reader
+        )
 
     @api.model
-    def move_request_record_values_csv(self, _data):
+    def move_request_record_values_csv(self, doc, data):
         """Construct EDI move request record value dictionaries
 
         Must return an iterable of dictionaries, each of which could
         passed to :meth:`~odoo.models.Model.create` in order to create
         an EDI move request record.
         """
-        return self.no_record_values()
+        reader = csv.DictReader(data.decode("utf-8-sig").splitlines())
+        self.check_headings_csv(reader.fieldnames)
+        return (
+            self.prepare_move_csv(doc, line)
+            for line in reader
+        )
 
     @api.model
     def postprocess_record_values_csv(self, pick_vlist, move_vlist):
@@ -70,6 +82,26 @@ class EdiPickRequestDocument(models.AbstractModel):
         and merged in place.
         """
         pass
+
+    @api.model
+    def prepare_order_csv(self, doc, row, picking_type):
+        """Construct EDI pick request record value dictionaries."""
+        return self.no_record_values()
+
+    @api.model
+    def prepare_move_csv(self, doc, row):
+        """Construct EDI move request record value dictionaries."""
+        return self.no_record_values()
+
+    @api.model
+    def check_headings_csv(self, fieldnames):
+        """Check file header field names against defined headers"""
+        pass
+
+    @api.model
+    def get_picking_type(self):
+        """Hook to determine picking type used in prepare_order_csv. DEBT: Should probably utilize the picking types on the document instead."""
+        return self.env["stock.picking.type"].browse()
 
     @api.model
     def prepare(self, doc):
@@ -84,8 +116,9 @@ class EdiPickRequestDocument(models.AbstractModel):
                 postprocess_adapter_method = getattr(self, f"postprocess_record_values_{file_extension}")
             except AttributeError:
                 raise ValidationError(_("File extension %s is not supported by this EDI document type") %file_extension)
-            pick_data = pick_adapter_method(data)
-            move_data = move_adapter_method(data)
+            # list() wrappers prevent generator exhaustion if anything consumes the generators in postprocess_adapter_method
+            pick_data = list(pick_adapter_method(doc, data))
+            move_data = list(move_adapter_method(doc, data))
             postprocess_adapter_method(pick_data, move_data)
             self.pick_request_record_model(doc).prepare(doc, pick_data)
             self.move_request_record_model(doc).prepare(doc, move_data)
