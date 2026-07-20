@@ -98,3 +98,9 @@ _logger.info(f"Took {stats.elapsed} seconds, did {stats.count} queries")
 
 ## trace()
 Trace database queries
+
+- The `raise_issue` function helps us create issues (projec.task) for trace backs. We prevent raising duplicate issue by
+identifing if same issue was created for the record with same description and the issue is still not marked as closed. We
+consider issue as closed based on the `stage_id` of the task. `stage_id`(project.task.type) has a boolean column
+`is_closed`. Once the issue (project.task) is in this stage we consider it as closed.
+- The issues are currently raised inside `EDI` project.

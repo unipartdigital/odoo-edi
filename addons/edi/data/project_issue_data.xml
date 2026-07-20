@@ -14,6 +14,7 @@
       <field name="name">Closed</field>
       <field name="sequence" eval="50"/>
       <field name="fold" eval="True"/>
+      <field name="is_closed" eval="True"/>
     </record>
 
     <!-- Create "EDI" project -->
