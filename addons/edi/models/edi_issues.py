@@ -4,6 +4,7 @@ import traceback
 import logging
 from odoo import api, fields, models
 from odoo.exceptions import UserError
+from odoo.tools import html_escape
 
 _logger = logging.getLogger(__name__)
 
@@ -99,15 +100,41 @@ class BaseIssue(models.AbstractModel):
         Raise an issue in the associated issue tracker.
         """
         self.ensure_one()
+        ProjectTask = self.env["project.task"]
 
         # Parse exception
-        title = err.name if isinstance(err, UserError) else str(err)
-        tbe = traceback.TracebackException.from_exception(err)
-
-        # Construct issue
+        title = err.args[0] if isinstance(err, UserError) else str(err)
         vals = self._issue_vals()
-        vals['name'] = ("[%s] %s" % (self.name, title))
-        issue = self.env['project.task'].create(vals)
+
+        if hasattr(err, "collected_exceptions"):
+            description = "<pre>%s</pre>" % (html_escape(err.collected_exceptions),)
+        else:
+            tbe = traceback.TracebackException.from_exception(err)
+            trace = "".join(tbe.format())
+            description = "<pre>%s</pre>" % (html_escape(trace),)
+
+        vals["name"] = f"{fmt} " % self.name
+        vals["description"] = description
+        base_field = self._fields["issue_ids"].inverse_name
+
+        issue_exists = ProjectTask.search_count(
+            [
+                ("project_id", "=", self.project_id.id),
+                (base_field, "=", self.id),
+                ("description", "=", description),
+                ("is_closed", "=", False),
+            ]
+        )
+        if issue_exists:
+            _logger.warning(
+                "Issue with description %s for %s already exists, Not creating a new issue",
+                err,
+                self.name,
+                extra={"obj": self},
+            )
+            return True
+        # Construct issue
+        issue = ProjectTask.create(vals)
 
         # Construct list of threads
         threads = [self]
@@ -118,18 +145,16 @@ class BaseIssue(models.AbstractModel):
                     threads += thread
 
         # Add traceback if applicable
-        trace = ''.join(tbe.format())
-        _logger.error(trace)
+
+        _logger.error(description)
         if not isinstance(err, UserError):
-            issue.message_post(body=trace, content_subtype='plaintext')
+            issue.message_post(body=description, content_subtype="plaintext")
             for thread in threads:
-                thread.sudo().message_post(body=trace,
-                                           content_subtype='plaintext')
+                thread.sudo().message_post(body=description, content_subtype="plaintext")
 
         # Add summary
         for thread in threads:
-            thread.sudo().message_post(body=(fmt % title),
-                                       content_subtype='plaintext')
+            thread.sudo().message_post(body=(fmt % title), content_subtype="plaintext")
         return issue
 
     def close_issues(self):
@@ -222,15 +247,42 @@ class EdiIssue(models.AbstractModel):
         Raise an issue in the associated issue tracker.
         """
         self.ensure_one()
+        ProjectTask = self.env["project.task"]
 
         # Parse exception
         title = err.args[0] if isinstance(err, UserError) else str(err)
-        tbe = traceback.TracebackException.from_exception(err)
+        vals = self._issue_vals()
+
+        if hasattr(err, "collected_exceptions"):
+            description = "<pre>%s</pre>" % (html_escape(err.collected_exceptions),)
+        else:
+            tbe = traceback.TracebackException.from_exception(err)
+            trace = "".join(tbe.format())
+            description = "<pre>%s</pre>" % (html_escape(trace),)
+
+        vals["name"] = f"{fmt} " % self.name
+        vals["description"] = description
+
+        base_field = self._fields["issue_ids"].inverse_name
+        issue_exists = ProjectTask.search_count(
+            [
+                ("project_id", "=", self.project_id.id),
+                (base_field, "=", self.id),
+                ("description", "=", description),
+                ("is_closed", "=", False),
+            ]
+        )
+        if issue_exists:
+            _logger.warning(
+                "Issue with description %s for %s already exists, Not creating a new issue",
+                err,
+                self.name,
+                extra={"obj": self},
+            )
+            return True
 
         # Construct issue
-        vals = self._issue_vals()
-        vals["name"] = "[%s] %s" % (self.name, title)
-        issue = self.env["project.task"].create(vals)
+        issue = ProjectTask.create(vals)
 
         # Construct list of threads
         threads = [self]
@@ -241,12 +293,11 @@ class EdiIssue(models.AbstractModel):
                     threads += thread
 
         # Add traceback if applicable
-        trace = "".join(tbe.format())
-        _logger.error(trace)
+        _logger.error(description)
         if not isinstance(err, UserError):
-            issue.message_post(body=trace, content_subtype="plaintext")
+            issue.message_post(body=description, content_subtype="plaintext")
             for thread in threads:
-                thread.sudo().message_post(body=trace, content_subtype="plaintext")
+                thread.sudo().message_post(body=description, content_subtype="plaintext")
 
         # Add summary
         for thread in threads:
