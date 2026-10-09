@@ -8,6 +8,15 @@ import fnmatch
 class IrAttachment(models.Model):
 
     _inherit = "ir.attachment"
+    
+    @api.model
+    def init(self):
+        super().init()
+        self._cr.execute("""
+            CREATE INDEX IF NOT EXISTS idx_ir_attachment_lookup
+            ON ir_attachment (name, res_model, res_field, file_size)
+            WHERE res_id IS NOT NULL
+        """)
 
     @api.model
     def check(self, mode, values=None):
