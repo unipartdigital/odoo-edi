@@ -320,6 +320,16 @@ class EdiGatewayCommonCase(EdiGatewayCase):
         form = Form(EdiGateway)
         self.assertEqual(form.doc_count, 0)
 
+    def test_copy_of_saved_gateway_counts(self):
+        """Test a copy of a saved gateway, as used by onchange, counts its origin's records"""
+        EdiGateway = self.env["edi.gateway"]
+
+        self.assertTrue(self.gateway.doc_count)
+        self.assertTrue(self.gateway.transfer_count)
+        copy = EdiGateway.new({}, origin=self.gateway)
+        self.assertEqual(copy.doc_count, self.gateway.doc_count)
+        self.assertEqual(copy.transfer_count, self.gateway.transfer_count)
+
     def test_ssh_connect(self):
         """Test connect to SSH server"""
         self.gateway.server = "dummy"
