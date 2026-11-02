@@ -260,6 +260,42 @@ class EdiGatewayCommonCase(EdiGatewayCase):
         self.assertEqual(self.gateway.ssh_host_fingerprint,
                          'e3:32:6e:5c:ee:47:58:2d:bb:f1:d0:3b:0e:c4:55:a0')
 
+    def test_doc_count_batch(self):
+        """Test document counts across several gateways in a single recordset"""
+        IrModel = self.env['ir.model']
+        EdiGateway = self.env['edi.gateway']
+        EdiTransfer = self.env['edi.transfer']
+        EdiDocument = self.env['edi.document']
+
+        other_gateway = EdiGateway.create({
+            'name': "Other gateway",
+            'model_id': IrModel._get_id('edi.connection.model'),
+        })
+        empty_gateway = EdiGateway.create({
+            'name': "Empty gateway",
+            'model_id': IrModel._get_id('edi.connection.model'),
+        })
+        other_xfer = EdiTransfer.create({'gateway_id': other_gateway.id})
+        for name in ("First", "Second"):
+            EdiDocument.create({
+                'name': name,
+                'doc_type_id': self.doc_type_unknown.id,
+                'transfer_id': other_xfer.id,
+            })
+
+        gateways = self.gateway | other_gateway | empty_gateway
+        gateways.invalidate_cache(['doc_count'])
+        self.assertEqual(self.gateway.doc_count, 1)
+        self.assertEqual(other_gateway.doc_count, 2)
+        self.assertEqual(empty_gateway.doc_count, 0)
+
+    def test_new_gateway_doc_count(self):
+        """Test that the document count of an unsaved gateway can be computed"""
+        EdiGateway = self.env['edi.gateway']
+
+        gateway = EdiGateway.new({'name': "Unsaved gateway"})
+        self.assertEqual(gateway.doc_count, 0)
+
 
 class EdiGatewayConnectionCase(EdiGatewayCase):
     """Base test class for EDI gateway connection models"""
