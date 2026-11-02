@@ -209,9 +209,15 @@ class EdiGateway(models.Model):
 
     @api.depends("doc_ids")
     def _compute_doc_count(self):
-        """Compute number of documents (for UI display)"""
+        """Compute number of documents (for UI display)
+        We count the documents of each gateway with an indexed COUNT query, instead of loading
+        every document related to the gateway. A grouped query scans the whole document table,
+        which is slower than one index-only count per gateway when there are few gateways."""
+        EdiDocument = self.env["edi.document"]
+
         for gw in self:
-            gw.doc_count = len(gw.doc_ids)
+            gw_id = gw._origin.id
+            gw.doc_count = EdiDocument.search_count([("gateway_id", "=", gw_id)]) if gw_id else 0
 
     @api.depends("cron_ids")
     def _compute_cron_count(self):

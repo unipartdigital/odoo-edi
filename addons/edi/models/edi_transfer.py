@@ -69,9 +69,17 @@ class EdiTransfer(models.Model):
 
     @api.depends("doc_ids")
     def _compute_doc_count(self):
-        """Compute number of documents (for UI display)"""
+        """Compute number of documents (for UI display)
+        We use the read_group method to count the documents with a single grouped query,
+        instead of loading every document related to the transfer."""
+        EdiDocument = self.env["edi.document"]
+
+        docs_data = EdiDocument.read_group(
+            [("transfer_id", "in", self.ids)], ["transfer_id"], ["transfer_id"]
+        )
+        doc_count_dict = {data["transfer_id"][0]: data["transfer_id_count"] for data in docs_data}
         for xfer in self:
-            xfer.doc_count = len(xfer.doc_ids)
+            xfer.doc_count = doc_count_dict.get(xfer.id, 0)
 
     @api.depends("input_ids")
     def _compute_input_count(self):
