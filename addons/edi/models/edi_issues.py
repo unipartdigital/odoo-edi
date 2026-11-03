@@ -8,6 +8,37 @@ from odoo.exceptions import UserError
 _logger = logging.getLogger(__name__)
 
 
+def compute_issue_counts(records, field_map):
+    """Set issue_count and rel_issue_count on issue-tracked records
+
+    Open issues are counted in the database rather than by loading them, as a record can have a
+    very large number of open issues. Issues also linked to a related record that the model does
+    not have a field for (e.g. a transfer's issue, seen from its gateway) count as related.
+    """
+    ProjectTask = records.env["project.task"]
+    issue_field = records._fields["issue_ids"]
+    inverse = issue_field.inverse_name
+    related = [
+        issue_field_name
+        for field, issue_field_name in field_map
+        if issue_field_name != inverse and field not in records._fields
+    ]
+    domain = [(inverse, "in", records.ids)] + issue_field.domain
+
+    def count_by_record(extra_domain):
+        groups = ProjectTask.read_group(domain + extra_domain, [inverse], [inverse])
+        return {group[inverse][0]: group["%s_count" % inverse] for group in groups}
+
+    open_counts = count_by_record([])
+    # Without related fields every open issue is an own issue
+    own_counts = open_counts
+    if related:
+        own_counts = count_by_record([(field, "=", False) for field in related])
+    for issues in records:
+        issues.issue_count = own_counts.get(issues.id, 0)
+        issues.rel_issue_count = open_counts.get(issues.id, 0) - issues.issue_count
+
+
 class Project(models.Model):
     """Extend ``project.project`` to include EDI information"""
 
@@ -65,17 +96,7 @@ class BaseIssue(models.AbstractModel):
     @api.depends(lambda self: self.display_issue_counts_depends())
     def _compute_issue_counts(self):
         """Compute number of open issues (for UI display)"""
-        inverse = self._fields["issue_ids"].inverse_name
-        related = [
-            base_field
-            for field, base_field in self.ISSUES_FIELD_MAP
-            if base_field != inverse and field not in self._fields
-        ]
-        for issues in self:
-            issues.issue_count = len(
-                issues.issue_ids.filtered(lambda x: all(not getattr(x, f) for f in related))
-            )
-            issues.rel_issue_count = len(issues.issue_ids) - issues.issue_count
+        compute_issue_counts(self, self.ISSUES_FIELD_MAP)
 
     @api.multi
     def _issue_vals(self):
