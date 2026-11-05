@@ -193,26 +193,26 @@ class EdiGateway(models.Model):
     @api.depends('transfer_ids')
     def _compute_transfer_count(self):
         """Compute number of transfers (for UI display)
-        We use the read_group method to aggregate data from the edi.transfer model.
-        We specify the search domain to filter transfers related to the current edi.gateway,
-        group the results by gateway_id, and count the number of records for each group."""
-
+        We count per gateway with search_count rather than read_group, as read_group also
+        selects min(id), which reads every transfer row instead of only the gateway_id index."""
         EdiTransfer = self.env["edi.transfer"]
-        transfers_data = EdiTransfer.read_group(
-            [("gateway_id", "in", self.ids)], ["gateway_id"], ["gateway_id"]
-        )
-        transfer_count_dict = {
-            data["gateway_id"][0]: data["gateway_id_count"] for data in transfers_data
-        }
+
         for gw in self:
-            gw.transfer_count = transfer_count_dict.get(gw.id, 0)
+            gw.transfer_count = (
+                EdiTransfer.search_count([("gateway_id", "=", gw.id)]) if gw.id else 0
+            )
 
     @api.multi
     @api.depends('doc_ids')
     def _compute_doc_count(self):
-        """Compute number of documents (for UI display)"""
+        """Compute number of documents (for UI display)
+        We count the documents of each gateway with an indexed COUNT query, instead of loading
+        every document related to the gateway. A grouped query scans the whole document table,
+        which is slower than one index-only count per gateway when there are few gateways."""
+        EdiDocument = self.env["edi.document"]
+
         for gw in self:
-            gw.doc_count = len(gw.doc_ids)
+            gw.doc_count = EdiDocument.search_count([("gateway_id", "=", gw.id)]) if gw.id else 0
 
     @api.multi
     @api.depends('cron_ids')
