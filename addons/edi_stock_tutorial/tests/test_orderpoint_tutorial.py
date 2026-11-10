@@ -9,7 +9,7 @@ class TestTutorial(EdiOrderpointCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.doc_type_tutorial = cls.env.ref("edi_stock.orderpoint_tutorial_document_type")
+        cls.doc_type_tutorial = cls.env.ref("edi_stock_tutorial.orderpoint_tutorial_document_type")
 
     @classmethod
     def create_tutorial(cls, *filenames):
@@ -27,7 +27,11 @@ class TestTutorial(EdiOrderpointCase):
         }
         self.assertEqual(orderpoints_by_key[("APPLE", "FRIDGE")].product_max_qty, 8)
         self.assertEqual(orderpoints_by_key[("BANANA", "CUPBOARD")].product_min_qty, 5)
-        self.assertEqual(orderpoints_by_key[("BANANA", "CUPBOARD")].lead_days, 14)
+        recs_by_key = {
+            (x.product_id.default_code, x.location_id.name): x
+            for x in doc.orderpoint_tutorial_ids
+        }
+        self.assertEqual(recs_by_key[("BANANA", "CUPBOARD")].lead_weeks, 2)
 
     def test_identical(self):
         """Document and subsequent identical document"""
