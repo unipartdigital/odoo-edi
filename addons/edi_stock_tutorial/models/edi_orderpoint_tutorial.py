@@ -32,20 +32,12 @@ class EdiOrderpointTutorialRecord(models.Model):
     _inherit = "edi.orderpoint.record"
     _description = "Minimum Inventory Rule"
 
+    # Minimum inventory rules have no lead time field since Odoo 14
+    # (lead times come from the procurement rules), so the lead time
+    # is only recorded on the EDI record
     lead_weeks = fields.Integer(
         string="Lead Time", required=True, readonly=True, help="Lead Time (in weeks)"
     )
-
-    @api.model
-    def target_values(self, record_vals):
-        """Construct ``stock.warehouse.orderpoint`` field value dictionary"""
-        orderpoint_vals = super().target_values(record_vals)
-        orderpoint_vals.update(
-            {
-                "lead_days": (record_vals["lead_weeks"] * 7),
-            }
-        )
-        return orderpoint_vals
 
 
 class EdiOrderpointTutorialDocument(models.AbstractModel):

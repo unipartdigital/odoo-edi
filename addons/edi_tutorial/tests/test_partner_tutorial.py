@@ -9,7 +9,7 @@ class TestPartnerTutorial(EdiCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.doc_type_tutorial = cls.env.ref("edi.partner_tutorial_document_type")
+        cls.doc_type_tutorial = cls.env.ref("edi_tutorial.partner_tutorial_document_type")
 
     @classmethod
     def create_tutorial(cls, *filenames):

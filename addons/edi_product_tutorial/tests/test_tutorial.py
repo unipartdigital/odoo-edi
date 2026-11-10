@@ -9,7 +9,7 @@ class TestTutorial(EdiProductCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.doc_type_tutorial = cls.env.ref("edi_product.tutorial_document_type")
+        cls.doc_type_tutorial = cls.env.ref("edi_product_tutorial.tutorial_document_type")
         cls.units = cls.env.ref("uom.product_uom_unit")
         cls.dozens = cls.env.ref("uom.product_uom_dozen")
         cls.dozens.name = "Dozen(s)"

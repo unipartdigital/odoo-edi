@@ -13,7 +13,7 @@ class TestTutorial(EdiPickCase):
         cls.tracker_first = Tracker.create({"name": "ORDER01"})
         cls.tracker_second = Tracker.create({"name": "ORDER02"})
         cls.tracker_third = Tracker.create({"name": "ORDER03"})
-        cls.doc_type_tutorial = cls.env.ref("edi_stock.pick_report_tutorial_document_type")
+        cls.doc_type_tutorial = cls.env.ref("edi_stock_tutorial.pick_report_tutorial_document_type")
         cls.pick_morning = cls.create_pick(cls.pick_type_in)
         cls.create_move(cls.pick_morning, cls.tracker_first, cls.apple, 5)
         cls.create_move(cls.pick_morning, cls.tracker_first, cls.banana, 7)
