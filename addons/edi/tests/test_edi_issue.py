@@ -27,7 +27,8 @@ class TestEdiIssue(EdiCase):
             issue = self.doc.raise_issue("Test issue: %s",
                                          UserError("Test close issues"))
         self.assertIn(issue, self.doc.issue_ids)
-        self.doc.action_close_issues()
+        with patch.object(self.env.cr, 'commit'):
+            self.doc.action_close_issues()
         self.assertEqual(len(self.doc.issue_ids), 0)
 
     def test02_action_view_issues(self):
@@ -60,7 +61,8 @@ class TestEdiIssue(EdiCase):
             (issue.id,))
         issue.invalidate_cache()
 
-        with patch.object(type(Leave), 'search', autospec=True) as search:
+        with patch.object(type(Leave), 'search', autospec=True) as search, \
+                patch.object(self.env.cr, 'commit'):
             self.doc.action_close_issues()
 
         search.assert_not_called()
@@ -77,9 +79,25 @@ class TestEdiIssue(EdiCase):
 
         with patch.object(edi_issues, 'CLOSE_ISSUES_BATCH_SIZE', 2), \
                 patch.object(type(ProjectTask), 'write', autospec=True,
-                             side_effect=write) as spy:
+                             side_effect=write) as spy, \
+                patch.object(self.env.cr, 'commit') as commit:
             self.doc.action_close_issues()
 
         self.assertEqual(len(self.doc.issue_ids), 0)
         stage_writes = [call for call in spy.call_args_list if 'stage_id' in call[0][1]]
         self.assertEqual([len(call[0][0]) for call in stage_writes], [2, 2, 1])
+        self.assertEqual(commit.call_count, 3)
+
+    def test_closing_issues_without_the_action_does_not_commit(self):
+        """Test closing issues as part of other processing does not commit them"""
+        ProjectTask = self.env['project.task']
+        context = self.doc.action_view_issues()['context']
+        for number in range(3):
+            ProjectTask.with_context(context).create({'name': "Batch issue %d" % number})
+
+        with patch.object(edi_issues, 'CLOSE_ISSUES_BATCH_SIZE', 2), \
+                patch.object(self.env.cr, 'commit') as commit:
+            self.doc.close_issues()
+
+        self.assertEqual(len(self.doc.issue_ids), 0)
+        commit.assert_not_called()
