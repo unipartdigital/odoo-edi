@@ -47,3 +47,21 @@ class TestEdiIssue(EdiCase):
             issue = self.doc.raise_issue("Test issue: %s",
                                          ValidationError("Test non UserError"))
         self.assertIn(issue, self.doc.issue_ids)
+
+    def test_closing_issues_does_not_compute_their_working_time(self):
+        """Test closing issues does not search the calendar leaves of each working day"""
+        Leave = self.env['resource.calendar.leaves']
+        with patch.object(edi_issues._logger, 'error', autospec=True):
+            issue = self.doc.raise_issue("Test issue: %s",
+                                         UserError("Test working time"))
+        self.assertTrue(issue.use_edi_fields)
+        self.env.cr.execute(
+            "UPDATE project_task SET create_date = now() - interval '30 days' WHERE id = %s",
+            (issue.id,))
+        issue.invalidate_cache()
+
+        with patch.object(type(Leave), 'search', autospec=True) as search:
+            self.doc.action_close_issues()
+
+        search.assert_not_called()
+        self.assertEqual(issue.working_hours_close, 0.0)
