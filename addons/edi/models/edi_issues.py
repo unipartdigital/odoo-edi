@@ -171,12 +171,17 @@ class BaseIssue(models.AbstractModel):
         return issue
 
     @api.multi
-    def close_issues(self):
+    def close_issues(self, commit=False):
         """Close all open issues
 
         The issues are written in batches, one write per project in each batch, rather than one
         at a time. Each write recomputes the issue counts of the related records, which is
         expensive when done once per issue.
+
+        With ``commit`` each batch is committed once written, which releases its locks and
+        memory so that closing a very large number of issues neither blocks the scheduled
+        actions that use the gateway nor exhausts the memory of the server. A failure then leaves
+        the batches written so far closed, and closing again resumes with the issues left.
         """
         issues = self.mapped('issue_ids')
         for start in range(0, len(issues), CLOSE_ISSUES_BATCH_SIZE):
@@ -185,6 +190,9 @@ class BaseIssue(models.AbstractModel):
                 project_issues = batch.filtered(lambda issue: issue.project_id.id == project_id)
                 closed = project_issues[0].stage_find(project_id, [('fold', '=', True)])
                 project_issues.write({'stage_id': closed})
+            if commit:
+                self.env.cr.commit()
+                self.invalidate_cache()
 
     @api.multi
     def action_view_issues(self):
@@ -200,8 +208,8 @@ class BaseIssue(models.AbstractModel):
 
     @api.multi
     def action_close_issues(self):
-        """Close all open issues"""
-        self.close_issues()
+        """Close all open issues, committing after each batch of them"""
+        self.close_issues(commit=True)
         return True
 
 
