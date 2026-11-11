@@ -61,6 +61,23 @@ class ProjectTask(models.Model):
     edi_transfer_id = fields.Many2one('edi.transfer', string="EDI Transfer",
                                       index=True, ondelete='cascade')
 
+    @api.depends("create_date", "date_end", "date_assign")
+    def _compute_elapsed(self):
+        """Skip the working time statistics of EDI issues
+
+        They are meaningless for issues raised by the system, and computing them takes a query
+        per working day that the issue was open, which makes closing many issues very slow.
+        """
+        edi_issues = self.filtered("use_edi_fields")
+        names = [
+            "working_hours_open",
+            "working_hours_close",
+            "working_days_open",
+            "working_days_close",
+        ]
+        edi_issues.update(dict.fromkeys(names, 0.0))
+        super(ProjectTask, self - edi_issues)._compute_elapsed()
+
 
 class BaseIssue(models.AbstractModel):
     """Base Issue-Tracked Object"""
