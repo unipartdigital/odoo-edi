@@ -7,6 +7,8 @@ from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
 
+CLOSE_ISSUES_BATCH_SIZE = 1000
+
 
 def compute_issue_counts(records, field_map):
     """Set issue_count and rel_issue_count on issue-tracked records
@@ -170,11 +172,19 @@ class BaseIssue(models.AbstractModel):
 
     @api.multi
     def close_issues(self):
-        """Close all open issues"""
-        for issue in self.mapped('issue_ids'):
-            closed = issue.stage_find(issue.project_id.id,
-                                      [('fold', '=', True)])
-            issue.stage_id = closed
+        """Close all open issues
+
+        The issues are written in batches, one write per project in each batch, rather than one
+        at a time. Each write recomputes the issue counts of the related records, which is
+        expensive when done once per issue.
+        """
+        issues = self.mapped('issue_ids')
+        for start in range(0, len(issues), CLOSE_ISSUES_BATCH_SIZE):
+            batch = issues[start:start + CLOSE_ISSUES_BATCH_SIZE]
+            for project_id in {issue.project_id.id for issue in batch}:
+                project_issues = batch.filtered(lambda issue: issue.project_id.id == project_id)
+                closed = project_issues[0].stage_find(project_id, [('fold', '=', True)])
+                project_issues.write({'stage_id': closed})
 
     @api.multi
     def action_view_issues(self):
