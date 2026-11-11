@@ -31,6 +31,28 @@ class TestEdiIssue(EdiCase):
         self.doc.action_close_issues()
         self.assertEqual(len(self.doc.issue_ids), 0)
 
+    def test_closing_issues_does_not_compute_their_working_time(self):
+        """Test closing issues does not compute the working time of each issue"""
+        Calendar = self.env["resource.calendar"]
+        ProjectTask = self.env["project.task"]
+
+        with patch.object(edi_issues._logger, "error", autospec=True):
+            issue = self.doc.raise_issue("Test issue: %s", UserError("Test working time"))
+        self.assertTrue(issue.use_edi_fields)
+        # Backdate the issue, so that its working time would take a long time to compute
+        self.env.cr.execute(
+            "UPDATE project_task SET create_date = now() - interval '30 days' WHERE id = %s",
+            (issue.id,),
+        )
+        ProjectTask.invalidate_cache()
+
+        with patch.object(type(Calendar), "get_work_duration_data", autospec=True) as duration:
+            self.doc.action_close_issues()
+            ProjectTask.flush()
+
+        duration.assert_not_called()
+        self.assertEqual(issue.working_hours_close, 0.0)
+
     def test_action_view_issues(self):
         """Test action view issues"""
         ProjectTask = self.env["project.task"]
