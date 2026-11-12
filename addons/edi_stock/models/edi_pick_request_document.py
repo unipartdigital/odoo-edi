@@ -2,6 +2,7 @@
 import csv
 
 from odoo import api, models
+from odoo.addons.edi.tools import NoRecordValuesError
 
 
 class EdiPickRequestDocument(models.AbstractModel):
@@ -98,6 +99,19 @@ class EdiPickRequestDocument(models.AbstractModel):
         pass
 
     @api.model
+    def _record_values_list(self, adapter_method, doc, data):
+        """Construct a list of EDI record value dictionaries
+
+        Returns an empty list if the document model has chosen not to
+        use the convenience method, as edi.record.prepare() would do
+        for an unconsumed iterable.
+        """
+        try:
+            return list(adapter_method(doc, data))
+        except NoRecordValuesError:
+            return []
+
+    @api.model
     def get_picking_type(self):
         """Hook to determine picking type used in prepare_order_csv. DEBT: Should probably utilize the picking types on the document instead."""
         return self.env["stock.picking.type"].browse()
@@ -110,9 +124,8 @@ class EdiPickRequestDocument(models.AbstractModel):
             pick_adapter_method = self.adapter_method("pick_request_record_values", fname)
             move_adapter_method = self.adapter_method("move_request_record_values", fname)
             postprocess_adapter_method = self.adapter_method("postprocess_record_values", fname)
-            # list() wrappers prevent generator exhaustion if anything consumes the generators in postprocess_adapter_method
-            pick_data = list(pick_adapter_method(doc, data))
-            move_data = list(move_adapter_method(doc, data))
+            pick_data = self._record_values_list(pick_adapter_method, doc, data)
+            move_data = self._record_values_list(move_adapter_method, doc, data)
             postprocess_adapter_method(pick_data, move_data)
             self.pick_request_record_model(doc).prepare(doc, pick_data)
             self.move_request_record_model(doc).prepare(doc, move_data)

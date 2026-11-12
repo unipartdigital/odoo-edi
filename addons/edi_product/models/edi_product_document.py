@@ -1,6 +1,7 @@
 """EDI product documents"""
 
 from odoo import api, models
+from odoo.addons.edi.tools import NoRecordValuesError
 
 class EdiProductDocument(models.AbstractModel):
     """EDI product document
@@ -55,4 +56,9 @@ class EdiProductDocument(models.AbstractModel):
             adapter_method = self.adapter_method(
                 "product_record_values", fname, default="product_record_values"
             )
-            self.product_record_model(doc).prepare(doc, adapter_method(data))
+            try:
+                vlist = adapter_method(data)
+            except NoRecordValuesError:
+                # Document model has chosen not to use the convenience method
+                continue
+            self.product_record_model(doc).prepare(doc, vlist)
