@@ -10,12 +10,17 @@ class EdiSaleCase(EdiCase):
     def setUpClass(cls):
         super().setUpClass()
         # Create test products
+        #
+        # Use service products so that delivered quantities are set
+        # manually, even when sale_stock is installed and would
+        # otherwise compute them from stock moves
         Product = cls.env["product.product"]
         cls.apple = Product.create(
             {
                 "default_code": "APPLE",
                 "name": "Apple",
                 "list_price": 0.70,
+                "type": "service",
             }
         )
         cls.banana = Product.create(
@@ -23,6 +28,7 @@ class EdiSaleCase(EdiCase):
                 "default_code": "BANANA",
                 "name": "Banana",
                 "list_price": 0.20,
+                "type": "service",
             }
         )
         cls.cherry = Product.create(
@@ -30,6 +36,7 @@ class EdiSaleCase(EdiCase):
                 "default_code": "CHERRY",
                 "name": "Cherry",
                 "list_price": 0.04,
+                "type": "service",
             }
         )
 
