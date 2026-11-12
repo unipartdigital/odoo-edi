@@ -1,6 +1,6 @@
 """EDI document tests"""
 
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 from .common import EdiCase
 
 
@@ -123,3 +123,35 @@ class TestEdiDocument(EdiCase):
         self.assertEqual(len(doc2.input_ids), 2)
         for attachment in doc2.input_ids:
             self.assertAttachment(attachment)
+
+    def test_adapter_method(self):
+        """Test adapter methods are found by file extension"""
+        DocModel = self.env["edi.document.model"]
+        self.assertEqual(
+            DocModel.adapter_method("no_record", "test.VALUES"), DocModel.no_record_values
+        )
+
+    def test_adapter_method_no_extension(self):
+        """Test adapter method for files without an extension"""
+        DocModel = self.env["edi.document.model"]
+        self.assertEqual(
+            DocModel.adapter_method("no_record", "TEST", default="no_record_values"),
+            DocModel.no_record_values,
+        )
+        with self.assertRaisesRegex(ValidationError, "has no extension"):
+            DocModel.adapter_method("no_record", "TEST")
+        # A default method that does not exist is also reported as no extension
+        with self.assertRaisesRegex(ValidationError, "File TEST has no extension"):
+            DocModel.adapter_method("no_record", "TEST", default="no_record_missing")
+        # A trailing dot is no extension
+        with self.assertRaisesRegex(ValidationError, "has no extension"):
+            DocModel.adapter_method("no_record", "TEST.")
+
+    def test_adapter_method_unsupported(self):
+        """Test unsupported file extensions are rejected"""
+        DocModel = self.env["edi.document.model"]
+        with self.assertRaisesRegex(ValidationError, "not supported"):
+            DocModel.adapter_method("no_record", "test.txt")
+        # Extensions cannot select other methods that share the prefix
+        with self.assertRaisesRegex(ValidationError, "not supported"):
+            DocModel.adapter_method("no", "test.record_values")
