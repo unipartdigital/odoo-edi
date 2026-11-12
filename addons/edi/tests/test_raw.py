@@ -49,7 +49,11 @@ class TestRaw(EdiCase):
     def test_unknown_format(self):
         """Unknown file format"""
         doc = self.create_raw("res.users.csv")
-        doc.input_ids.name = "res.users.garbage"
+        attachment = doc.input_ids
+        attachment.name = "res.users.garbage"
+        # Use content that is not CSV, as the import guesses the format
+        # from the content (with python-magic) before the file extension
+        attachment.datas = b64encode(b"\x00\x01\x02\xff\xfe garbage \x00" * 20)
         with self.assertRaisesIssue(doc):
             doc.action_prepare()
 
