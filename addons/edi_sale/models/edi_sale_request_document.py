@@ -176,36 +176,6 @@ class EdiSaleRequestDocument(models.AbstractModel):
         partners = PartnerRecord.search(error_domain)
         return any([lines, orders, partners])
 
-    def _build_invalid_order_lines_report(self, lines):
-        report_lines = ["Missing order lines"]
-        for line in lines:
-            item = "\t".join([str(x) for x in self._extract_invalid_order_line(line)])
-            report_lines.append(item)
-        return report_lines
-
-    def _extract_invalid_order_line(self, line):
-        return [line.order_key, line.product_key, int(line.qty), line.error]
-
-    def _build_invalid_orders_report(self, orders):
-        report_lines = ["Missing orders"]
-        for order in orders:
-            item = "\t".join([str(x) for x in self._extract_invalid_order(order)])
-            report_lines.append(item)
-        return report_lines
-
-    def _extract_invalid_order(self, order):
-        return [order.name, order.error]
-
-    def _build_invalid_partners_report(self, partners):
-        report_lines = ["Missing partners"]
-        for partner in partners:
-            item = "\t".join([str(x) for x in self._extract_invalid_partner(partner)])
-            report_lines.append(item)
-        return report_lines
-
-    def _extract_invalid_partner(self, partner):
-        return [partner.error.replace("\n", " ")]
-
     def _clear_errors(self, doc):
         PartnerRecord = self.partner_record_model(doc)
         SaleLineRequestRecord = self.sale_line_request_record_model(doc)
