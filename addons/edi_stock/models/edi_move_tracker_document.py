@@ -1,7 +1,6 @@
 """EDI stock tracker documents"""
 
-from odoo import api, models, _
-from odoo.exceptions import ValidationError
+from odoo import api, models
 
 
 class EdiMoveTrackerDocument(models.AbstractModel):
@@ -48,10 +47,5 @@ class EdiMoveTrackerDocument(models.AbstractModel):
         """Prepare document"""
         super().prepare(doc)
         for fname, data in doc.inputs():
-            *__, file_extension = fname.rpartition(".")
-            file_extension = file_extension.lower()
-            try:
-                adapter_method = getattr(self, f"move_tracker_record_values_{file_extension}")
-            except AttributeError:
-                raise ValidationError(_("File extension %s is not supported by this EDI document type") %file_extension)
+            adapter_method = self.adapter_method("move_tracker_record_values", fname)
             self.move_tracker_record_model(doc).prepare(doc, adapter_method(data))

@@ -820,6 +820,36 @@ class EdiDocumentModel(models.AbstractModel):
         raise NoRecordValuesError
 
     @api.model
+    def adapter_method(self, prefix, fname, default=None):
+        """Get the adapter method for an input file, based on its extension
+
+        Returns the method named ``<prefix>_<extension>``, e.g.
+        ``prepare_csv`` for prefix ``prepare`` and file ``ORDER.CSV``.
+        Files without an extension use the method named ``default``,
+        if given.
+
+        Only alphanumeric extensions are looked up, so that a filename
+        cannot select an unrelated method that shares the prefix (e.g.
+        ``prepare_sale_line_name``).
+        """
+        __, dot, extension = fname.rpartition(".")
+        extension = extension.lower() if dot else ""
+        if not extension:
+            method = getattr(self, default, None) if default else None
+            if not callable(method):
+                raise ValidationError(
+                    _("File %s has no extension, which is not supported by this EDI document type")
+                    % fname
+                )
+            return method
+        method = getattr(self, f"{prefix}_{extension}", None) if extension.isalnum() else None
+        if not callable(method):
+            raise ValidationError(
+                _("File extension %s is not supported by this EDI document type") % extension
+            )
+        return method
+
+    @api.model
     def prepare(self, _doc):
         """Prepare document"""
         pass
