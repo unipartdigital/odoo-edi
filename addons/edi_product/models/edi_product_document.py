@@ -1,7 +1,6 @@
 """EDI product documents"""
 
-from odoo import api, models, _
-from odoo.exceptions import ValidationError
+from odoo import api, models
 
 class EdiProductDocument(models.AbstractModel):
     """EDI product document
@@ -51,10 +50,9 @@ class EdiProductDocument(models.AbstractModel):
         """Prepare document"""
         super().prepare(doc)
         for fname, data in doc.inputs():
-            *__, file_extension = fname.rpartition(".")
-            file_extension = file_extension.lower()
-            try:
-                adapter_method = getattr(self, f"product_record_values_{file_extension}")
-            except AttributeError:
-                raise ValidationError(_("File extension %s is not supported by this EDI document type") %file_extension)
+            # Files without an extension (e.g. SAP IDocs) use the
+            # unsuffixed product_record_values method
+            adapter_method = self.adapter_method(
+                "product_record_values", fname, default="product_record_values"
+            )
             self.product_record_model(doc).prepare(doc, adapter_method(data))

@@ -1,8 +1,7 @@
 """EDI stock transfer request documents"""
 import csv
 
-from odoo import api, models, _
-from odoo.exceptions import ValidationError
+from odoo import api, models
 
 
 class EdiPickRequestDocument(models.AbstractModel):
@@ -108,14 +107,9 @@ class EdiPickRequestDocument(models.AbstractModel):
         """Prepare document"""
         super().prepare(doc)
         for fname, data in doc.inputs():
-            *__, file_extension = fname.rpartition(".")
-            file_extension = file_extension.lower()
-            try:
-                pick_adapter_method = getattr(self, f"pick_request_record_values_{file_extension}")
-                move_adapter_method = getattr(self, f"move_request_record_values_{file_extension}")
-                postprocess_adapter_method = getattr(self, f"postprocess_record_values_{file_extension}")
-            except AttributeError:
-                raise ValidationError(_("File extension %s is not supported by this EDI document type") %file_extension)
+            pick_adapter_method = self.adapter_method("pick_request_record_values", fname)
+            move_adapter_method = self.adapter_method("move_request_record_values", fname)
+            postprocess_adapter_method = self.adapter_method("postprocess_record_values", fname)
             # list() wrappers prevent generator exhaustion if anything consumes the generators in postprocess_adapter_method
             pick_data = list(pick_adapter_method(doc, data))
             move_data = list(move_adapter_method(doc, data))
