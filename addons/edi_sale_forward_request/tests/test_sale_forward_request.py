@@ -53,4 +53,4 @@ class TestSaleForwardRequest(EdiSaleCase):
         doc = self.create_edi_document("order02.json")
         doc.action_execute()
         self.assertEqual(len(doc.issue_ids), 1)
-        self.assertTrue("Failed validating" in doc.issue_ids.name)
+        self.assertIn("Failed validating", doc.issue_ids.description)
