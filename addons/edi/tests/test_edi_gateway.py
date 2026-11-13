@@ -13,8 +13,10 @@ import threading
 from unittest.mock import patch
 import paramiko
 from odoo import fields
+from odoo.exceptions import UserError
+from odoo.tests import Form
 from odoo.tools import config
-from ..models import edi_gateway
+from ..models import edi_gateway, edi_issues
 from .common import EdiCase, EdiTestFile
 
 
@@ -266,6 +268,95 @@ class EdiGatewayCommonCase(EdiGatewayCase):
         action = self.gateway.action_view_docs()
         self.assertEqual(EdiDocument.search(action["domain"]), self.doc)
         self.assertEqual(len(EdiDocument.search(action["domain"])), self.gateway.doc_count)
+
+    def test_doc_count_batch(self):
+        """Test document counts across several gateways in a single recordset"""
+        IrModel = self.env["ir.model"]
+        EdiGateway = self.env["edi.gateway"]
+        EdiTransfer = self.env["edi.transfer"]
+        EdiDocument = self.env["edi.document"]
+
+        other_gateway = EdiGateway.create(
+            {
+                "name": "Other gateway",
+                "model_id": IrModel._get_id("edi.connection.model"),
+            }
+        )
+        empty_gateway = EdiGateway.create(
+            {
+                "name": "Empty gateway",
+                "model_id": IrModel._get_id("edi.connection.model"),
+            }
+        )
+        other_xfer = EdiTransfer.create({"gateway_id": other_gateway.id})
+        for name in ("First", "Second"):
+            EdiDocument.create(
+                {
+                    "name": name,
+                    "doc_type_id": self.doc_type_unknown.id,
+                    "transfer_id": other_xfer.id,
+                }
+            )
+
+        gateways = self.gateway | other_gateway | empty_gateway
+        gateways.invalidate_cache(["doc_count"])
+        self.assertEqual(self.gateway.doc_count, 1)
+        self.assertEqual(other_gateway.doc_count, 2)
+        self.assertEqual(empty_gateway.doc_count, 0)
+
+    def test_doc_count_single_query(self):
+        """Test document counts are not computed by loading the documents"""
+        EdiGateway = self.env["edi.gateway"]
+
+        gateways = EdiGateway.search([])
+        gateways.invalidate_cache(["doc_count"])
+        # One count query per gateway, without loading any documents
+        with self.assertQueryCount(len(gateways)):
+            gateways.mapped("doc_count")
+
+    def test_new_gateway_doc_count(self):
+        """Test that a new gateway form can be opened"""
+        EdiGateway = self.env["edi.gateway"]
+
+        form = Form(EdiGateway)
+        self.assertEqual(form.doc_count, 0)
+
+    def test_copy_of_saved_gateway_counts(self):
+        """Test a copy of a saved gateway, as used by onchange, counts its origin's records"""
+        EdiGateway = self.env["edi.gateway"]
+
+        self.assertTrue(self.gateway.doc_count)
+        self.assertTrue(self.gateway.transfer_count)
+        copy = EdiGateway.new({}, origin=self.gateway)
+        self.assertEqual(copy.doc_count, self.gateway.doc_count)
+        self.assertEqual(copy.transfer_count, self.gateway.transfer_count)
+
+    def test_issue_counts(self):
+        """Test own and related open issue counts on gateways and transfers"""
+        with patch.object(edi_issues._logger, "error", autospec=True):
+            self.gateway.raise_issue("Gateway issue: %s", UserError("Gateway failed"))
+            self.xfer.raise_issue("Transfer issue: %s", UserError("Transfer failed"))
+            self.doc.raise_issue("Document issue: %s", UserError("Document failed"))
+
+        # Issues raised by a transfer or its documents are related issues of the gateway
+        self.assertEqual(self.gateway.issue_count, 1)
+        self.assertEqual(self.gateway.rel_issue_count, 2)
+        self.assertEqual(self.xfer.issue_count, 1)
+        self.assertEqual(self.xfer.rel_issue_count, 1)
+
+        # Closed issues are not counted
+        with patch.object(self.env.cr, "commit"):
+            self.doc.action_close_issues()
+        self.assertFalse(self.doc.issue_ids)
+        self.assertEqual(self.gateway.rel_issue_count, 1)
+        self.assertEqual(self.xfer.rel_issue_count, 0)
+
+        # Close the remaining issues, since tearDown checks that none are left open
+        with patch.object(self.env.cr, "commit"):
+            self.gateway.action_close_issues()
+            self.xfer.action_close_issues()
+        self.assertEqual(self.gateway.issue_count, 0)
+        self.assertEqual(self.gateway.rel_issue_count, 0)
 
     def test_ssh_connect(self):
         """Test connect to SSH server"""
