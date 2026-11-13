@@ -13,8 +13,9 @@ import threading
 from unittest.mock import patch
 import paramiko
 from odoo import fields
+from odoo.exceptions import UserError
 from odoo.tools import config
-from ..models import edi_gateway
+from ..models import edi_gateway, edi_issues
 from .common import EdiCase, EdiTestFile
 
 
@@ -138,6 +139,7 @@ class EdiGatewayCase(EdiCase):
         cls.gateway = EdiGateway.create({
             'name': "Test gateway",
             'model_id': IrModel._get_id('edi.connection.model'),
+            'safety': 'edi.test_safety',
         })
 
         # Create paths
@@ -162,6 +164,10 @@ class EdiGatewayCase(EdiCase):
 
     def setUp(self):
         super().setUp()
+        # Enable the safety catch of the test gateway in the configuration file
+        patch_safety = patch.dict(config.misc.setdefault('edi', {}), {'test_safety': True})
+        patch_safety.start()
+        self.addCleanup(patch_safety.stop)
         # Create dummy SSH server
         self.ssh_server = self.SSHServer(self.files.joinpath('ssh_host_key'))
         patch_ssh_connect = patch.object(paramiko.SSHClient, 'connect',
@@ -259,6 +265,69 @@ class EdiGatewayCommonCase(EdiGatewayCase):
         self.assertTrue(mock_log_warning.called)
         self.assertEqual(self.gateway.ssh_host_fingerprint,
                          'e3:32:6e:5c:ee:47:58:2d:bb:f1:d0:3b:0e:c4:55:a0')
+
+    def test_doc_count_batch(self):
+        """Test document counts across several gateways in a single recordset"""
+        IrModel = self.env['ir.model']
+        EdiGateway = self.env['edi.gateway']
+        EdiTransfer = self.env['edi.transfer']
+        EdiDocument = self.env['edi.document']
+
+        other_gateway = EdiGateway.create({
+            'name': "Other gateway",
+            'model_id': IrModel._get_id('edi.connection.model'),
+        })
+        empty_gateway = EdiGateway.create({
+            'name': "Empty gateway",
+            'model_id': IrModel._get_id('edi.connection.model'),
+        })
+        other_xfer = EdiTransfer.create({'gateway_id': other_gateway.id})
+        for name in ("First", "Second"):
+            EdiDocument.create({
+                'name': name,
+                'doc_type_id': self.doc_type_unknown.id,
+                'transfer_id': other_xfer.id,
+            })
+
+        gateways = self.gateway | other_gateway | empty_gateway
+        gateways.invalidate_cache(['doc_count'])
+        self.assertEqual(self.gateway.doc_count, 1)
+        self.assertEqual(other_gateway.doc_count, 2)
+        self.assertEqual(empty_gateway.doc_count, 0)
+
+    def test_new_gateway_doc_count(self):
+        """Test that the document count of an unsaved gateway can be computed"""
+        EdiGateway = self.env['edi.gateway']
+
+        gateway = EdiGateway.new({'name': "Unsaved gateway"})
+        self.assertEqual(gateway.doc_count, 0)
+
+    def test_issue_counts(self):
+        """Test own and related open issue counts on gateways and transfers"""
+        with patch.object(edi_issues._logger, 'error', autospec=True):
+            self.gateway.raise_issue("Gateway issue: %s", UserError("Gateway failed"))
+            self.xfer.raise_issue("Transfer issue: %s", UserError("Transfer failed"))
+            self.doc.raise_issue("Document issue: %s", UserError("Document failed"))
+
+        # Issues raised by a transfer or its documents are related issues of the gateway
+        self.assertEqual(self.gateway.issue_count, 1)
+        self.assertEqual(self.gateway.rel_issue_count, 2)
+        self.assertEqual(self.xfer.issue_count, 1)
+        self.assertEqual(self.xfer.rel_issue_count, 1)
+
+        # Closed issues are not counted
+        with patch.object(self.env.cr, 'commit'):
+            self.doc.action_close_issues()
+        self.assertFalse(self.doc.issue_ids)
+        self.assertEqual(self.gateway.rel_issue_count, 1)
+        self.assertEqual(self.xfer.rel_issue_count, 0)
+
+        # Close the remaining issues, since tearDown checks that none are left open
+        with patch.object(self.env.cr, 'commit'):
+            self.gateway.action_close_issues()
+            self.xfer.action_close_issues()
+        self.assertEqual(self.gateway.issue_count, 0)
+        self.assertEqual(self.gateway.rel_issue_count, 0)
 
 
 class EdiGatewayConnectionCase(EdiGatewayCase):
@@ -375,11 +444,13 @@ class EdiGatewayConnectionCase(EdiGatewayCase):
                           autospec=True) as mock_do_transfer:
 
             # No safety option defined
-            self.gateway.safety = None
-            self.assertTrue(self.gateway.action_transfer())
-            self.assertTrue(mock_do_transfer.called)
-            mock_get_misc.reset_mock()
-            mock_do_transfer.reset_mock()
+            with self.assertRaisesIssue(self.gateway):
+                self.gateway.safety = None
+                self.assertFalse(self.gateway.action_transfer())
+                self.assertFalse(mock_do_transfer.called)
+                self.assertFalse(mock_get_misc.called)
+                mock_get_misc.reset_mock()
+                mock_do_transfer.reset_mock()
 
             # Safety option defined, not present in configuration file
             with self.assertRaisesIssue(self.gateway):

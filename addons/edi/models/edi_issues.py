@@ -7,6 +7,39 @@ from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
 
+CLOSE_ISSUES_BATCH_SIZE = 1000
+
+
+def compute_issue_counts(records, field_map):
+    """Set issue_count and rel_issue_count on issue-tracked records
+
+    Open issues are counted in the database rather than by loading them, as a record can have a
+    very large number of open issues. Issues also linked to a related record that the model does
+    not have a field for (e.g. a transfer's issue, seen from its gateway) count as related.
+    """
+    ProjectTask = records.env["project.task"]
+    issue_field = records._fields["issue_ids"]
+    inverse = issue_field.inverse_name
+    related = [
+        issue_field_name
+        for field, issue_field_name in field_map
+        if issue_field_name != inverse and field not in records._fields
+    ]
+    domain = [(inverse, "in", records.ids)] + issue_field.domain
+
+    def count_by_record(extra_domain):
+        groups = ProjectTask.read_group(domain + extra_domain, [inverse], [inverse])
+        return {group[inverse][0]: group["%s_count" % inverse] for group in groups}
+
+    open_counts = count_by_record([])
+    # Without related fields every open issue is an own issue
+    own_counts = open_counts
+    if related:
+        own_counts = count_by_record([(field, "=", False) for field in related])
+    for issues in records:
+        issues.issue_count = own_counts.get(issues.id, 0)
+        issues.rel_issue_count = open_counts.get(issues.id, 0) - issues.issue_count
+
 
 class Project(models.Model):
     """Extend ``project.project`` to include EDI information"""
@@ -29,6 +62,23 @@ class ProjectTask(models.Model):
                                      index=True, ondelete='cascade')
     edi_transfer_id = fields.Many2one('edi.transfer', string="EDI Transfer",
                                       index=True, ondelete='cascade')
+
+    @api.depends("create_date", "date_end", "date_assign")
+    def _compute_elapsed(self):
+        """Skip the working time statistics of EDI issues
+
+        They are meaningless for issues raised by the system, and computing them takes a query
+        per working day that the issue was open, which makes closing many issues very slow.
+        """
+        edi_issues = self.filtered("use_edi_fields")
+        names = [
+            "working_hours_open",
+            "working_hours_close",
+            "working_days_open",
+            "working_days_close",
+        ]
+        edi_issues.update(dict.fromkeys(names, 0.0))
+        super(ProjectTask, self - edi_issues)._compute_elapsed()
 
 
 class BaseIssue(models.AbstractModel):
@@ -65,17 +115,7 @@ class BaseIssue(models.AbstractModel):
     @api.depends(lambda self: self.display_issue_counts_depends())
     def _compute_issue_counts(self):
         """Compute number of open issues (for UI display)"""
-        inverse = self._fields["issue_ids"].inverse_name
-        related = [
-            base_field
-            for field, base_field in self.ISSUES_FIELD_MAP
-            if base_field != inverse and field not in self._fields
-        ]
-        for issues in self:
-            issues.issue_count = len(
-                issues.issue_ids.filtered(lambda x: all(not getattr(x, f) for f in related))
-            )
-            issues.rel_issue_count = len(issues.issue_ids) - issues.issue_count
+        compute_issue_counts(self, self.ISSUES_FIELD_MAP)
 
     @api.multi
     def _issue_vals(self):
@@ -131,12 +171,27 @@ class BaseIssue(models.AbstractModel):
         return issue
 
     @api.multi
-    def close_issues(self):
-        """Close all open issues"""
-        for issue in self.mapped('issue_ids'):
-            closed = issue.stage_find(issue.project_id.id,
-                                      [('fold', '=', True)])
-            issue.stage_id = closed
+    def close_issues(self, commit=False):
+        """Close all open issues
+
+        The issues are written in batches, one write per project in each batch, rather than one
+        at a time. Each write recomputes the issue counts of the related records, which is
+        expensive when done once per issue.
+
+        With ``commit`` each batch is committed once written, which releases its locks and
+        memory so that closing a very large number of issues neither blocks the scheduled
+        actions that use the gateway nor exhausts the memory of the server. A failure then leaves
+        the batches written so far closed, and closing again resumes with the issues left.
+        """
+        issues = self.mapped('issue_ids')
+        for _r, batch in issues.batched(CLOSE_ISSUES_BATCH_SIZE):
+            for project_id in {issue.project_id.id for issue in batch}:
+                project_issues = batch.filtered(lambda issue: issue.project_id.id == project_id)
+                closed = project_issues[0].stage_find(project_id, [('fold', '=', True)])
+                project_issues.write({'stage_id': closed})
+            if commit:
+                self.env.cr.commit()
+                self.invalidate_cache()
 
     @api.multi
     def action_view_issues(self):
@@ -152,8 +207,8 @@ class BaseIssue(models.AbstractModel):
 
     @api.multi
     def action_close_issues(self):
-        """Close all open issues"""
-        self.close_issues()
+        """Close all open issues, committing after each batch of them"""
+        self.close_issues(commit=True)
         return True
 
 
