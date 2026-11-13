@@ -184,8 +184,7 @@ class BaseIssue(models.AbstractModel):
         the batches written so far closed, and closing again resumes with the issues left.
         """
         issues = self.mapped('issue_ids')
-        for start in range(0, len(issues), CLOSE_ISSUES_BATCH_SIZE):
-            batch = issues[start:start + CLOSE_ISSUES_BATCH_SIZE]
+        for _r, batch in issues.batched(CLOSE_ISSUES_BATCH_SIZE):
             for project_id in {issue.project_id.id for issue in batch}:
                 project_issues = batch.filtered(lambda issue: issue.project_id.id == project_id)
                 closed = project_issues[0].stage_find(project_id, [('fold', '=', True)])
