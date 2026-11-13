@@ -8,6 +8,8 @@ from odoo.tools import html_escape
 
 _logger = logging.getLogger(__name__)
 
+CLOSE_ISSUES_BATCH_SIZE = 1000
+
 EDI_FIELD_MAP = [(field, ("edi_%s" % field)) for field in ("doc_id", "gateway_id", "transfer_id")]
 
 
@@ -333,10 +335,19 @@ class EdiIssue(models.AbstractModel):
         return issue
 
     def close_issues(self):
-        """Close all open issues"""
-        for issue in self.mapped("issue_ids"):
-            closed = issue.stage_find(issue.project_id.id, [("fold", "=", True)])
-            issue.stage_id = closed
+        """Close all open issues
+
+        The issues are written in batches, one write per project in each batch, rather than one
+        at a time. Each write recomputes the issue counts of the related records, which is
+        expensive when done once per issue.
+        """
+        issues = self.mapped("issue_ids")
+        for start in range(0, len(issues), CLOSE_ISSUES_BATCH_SIZE):
+            batch = issues[start : start + CLOSE_ISSUES_BATCH_SIZE]
+            for project in batch.mapped("project_id"):
+                project_issues = batch.filtered(lambda issue: issue.project_id == project)
+                closed = project_issues[0].stage_find(project.id, [("fold", "=", True)])
+                project_issues.write({"stage_id": closed})
 
     def action_view_issues(self):
         """View open issues"""
