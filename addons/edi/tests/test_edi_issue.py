@@ -53,6 +53,24 @@ class TestEdiIssue(EdiCase):
         duration.assert_not_called()
         self.assertEqual(issue.working_hours_close, 0.0)
 
+    def test_closing_issues_writes_them_in_batches(self):
+        """Test closing issues closes all of them with one write per batch"""
+        ProjectTask = self.env["project.task"]
+        context = self.doc.action_view_issues()["context"]
+        for number in range(5):
+            ProjectTask.with_context(context).create({"name": "Batch issue %d" % number})
+        self.assertEqual(len(self.doc.issue_ids), 5)
+        write = type(ProjectTask).write
+
+        with patch.object(edi_issues, "CLOSE_ISSUES_BATCH_SIZE", 2), patch.object(
+            type(ProjectTask), "write", autospec=True, side_effect=write
+        ) as spy:
+            self.doc.action_close_issues()
+
+        self.assertEqual(len(self.doc.issue_ids), 0)
+        stage_writes = [call for call in spy.call_args_list if "stage_id" in call[0][1]]
+        self.assertEqual([len(call[0][0]) for call in stage_writes], [2, 2, 1])
+
     def test_action_view_issues(self):
         """Test action view issues"""
         ProjectTask = self.env["project.task"]
