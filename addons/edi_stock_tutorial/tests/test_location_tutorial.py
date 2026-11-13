@@ -9,7 +9,7 @@ class TestLocationTutorial(EdiCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.doc_type_tutorial = cls.env.ref("edi_stock.location_tutorial_document_type")
+        cls.doc_type_tutorial = cls.env.ref("edi_stock_tutorial.location_tutorial_document_type")
 
     @classmethod
     def create_tutorial(cls, *filenames):

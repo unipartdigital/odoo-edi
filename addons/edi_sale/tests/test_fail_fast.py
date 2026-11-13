@@ -159,29 +159,29 @@ class TestFailFast(EdiSaleCase):
         self.assertEqual(sales_by_name["ORD03"].order_line.product_id, self.cherry)
         self.assertEqual(sales_by_name["ORD03"].order_line.product_uom_qty, 3)
 
-    def test_reports_missing_order_line(self):
-        """Test reports missing lines from otherwise valid orders."""
+    def test_skips_missing_order_line(self):
+        """Test skips missing lines from otherwise valid orders."""
         SaleRequestDocument = self.env["edi.sale.request.document"]
 
-        expected_message = (
-            '<p>Missing order lines\nORD01\tDURIAN\t2\tCannot identify Product "DURIAN"</p>'
-        )
         doc = self.create_tutorial("order02.csv", fail_fast=False)
         self.assertTrue(doc.action_execute())
         SaleLineRequestRecord = SaleRequestDocument.browse().sale_line_request_record_model(doc)
         error_domain = [("doc_id", "=", doc.id), ("error", "!=", False)]
 
-        messages = self.MailMessage.search([("body", "like", "Missing order lines%")])
-        self.assertEqual(len(messages), 1)
-        self.assertEqual(expected_message, messages[0].body)
+        # The order is created without the line for the unknown product
+        sales = doc.mapped("sale_request_tutorial_ids.sale_id")
+        self.assertEqual(len(sales), 1)
+        self.assertEqual(sales.origin, "ORD01")
+        self.assert_sales_in_state(sales)
+        self.assertEqual(sales.order_line.product_id, self.apple)
+        self.assertEqual(sales.order_line.product_uom_qty, 3)
         self.assertEqual(SaleLineRequestRecord.search_count(error_domain), 0)
 
-    def test_reports_lines_from_missing_order(self):
-        """Test reports lines from completely invalid order."""
+    def test_skips_lines_from_missing_order(self):
+        """Test skips lines from completely invalid order."""
         Sale = self.env["sale.order"]
         SaleRequestDocument = self.env["edi.sale.request.document"]
 
-        expected_message = '<p>Missing order lines\nORD02\tBANANA\t2\tCannot identify Sales Order "ORD02"\nMissing orders\nORD02\tTest Error</p>'
         create_method = Sale.create
 
         expected_pattern = (
@@ -208,7 +208,8 @@ class TestFailFast(EdiSaleCase):
         SaleLineRequestRecord = SaleRequestDocument.browse().sale_line_request_record_model(doc)
         error_domain = [("doc_id", "=", doc.id), ("error", "!=", False)]
 
-        messages = self.MailMessage.search([("body", "like", "Missing order lines%")])
-        self.assertEqual(len(messages), 1)
-        self.assertEqual(messages[0].body, expected_message)
+        # The invalid order and its lines are skipped
+        sales = doc.mapped("sale_request_tutorial_ids.sale_id")
+        self.assertEqual(sorted(sales.mapped("origin")), ["ORD01", "ORD03"])
+        self.assert_sales_in_state(sales)
         self.assertEqual(SaleLineRequestRecord.search_count(error_domain), 0)

@@ -9,7 +9,7 @@ class TestTutorial(EdiPickCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.doc_type_tutorial = cls.env.ref("edi_stock.pick_request_tutorial_document_type")
+        cls.doc_type_tutorial = cls.env.ref("edi_stock_tutorial.pick_request_tutorial_document_type")
 
     @classmethod
     def create_tutorial(cls, *filenames):

@@ -9,7 +9,7 @@ class TestTutorial(EdiQuantCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.doc_type_tutorial = cls.env.ref("edi_stock.quant_report_tutorial_document_type")
+        cls.doc_type_tutorial = cls.env.ref("edi_stock_tutorial.quant_report_tutorial_document_type")
         cls.create_quant(cls.fridge, cls.apple, 7)
         cls.create_quant(cls.cupboard, cls.apple, 3)
         cls.create_quant(cls.cupboard, cls.banana, 6)
