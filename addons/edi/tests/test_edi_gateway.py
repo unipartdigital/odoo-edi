@@ -345,14 +345,16 @@ class EdiGatewayCommonCase(EdiGatewayCase):
         self.assertEqual(self.xfer.rel_issue_count, 1)
 
         # Closed issues are not counted
-        self.doc.action_close_issues()
+        with patch.object(self.env.cr, "commit"):
+            self.doc.action_close_issues()
         self.assertFalse(self.doc.issue_ids)
         self.assertEqual(self.gateway.rel_issue_count, 1)
         self.assertEqual(self.xfer.rel_issue_count, 0)
 
         # Close the remaining issues, since tearDown checks that none are left open
-        self.gateway.action_close_issues()
-        self.xfer.action_close_issues()
+        with patch.object(self.env.cr, "commit"):
+            self.gateway.action_close_issues()
+            self.xfer.action_close_issues()
         self.assertEqual(self.gateway.issue_count, 0)
         self.assertEqual(self.gateway.rel_issue_count, 0)
 
