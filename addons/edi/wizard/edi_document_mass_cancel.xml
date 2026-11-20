@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="edi_document_mass_cancel_form" model="ir.ui.view">
+        <field name="name">edi.document.mass.cancel.form</field>
+        <field name="model">edi.document.mass.cancel</field>
+        <field name="arch" type="xml">
+            <form string="Mass Cancel EDI Documents">
+                <separator string="Documents to Cancel"/>
+                <p class="text-muted">Cancelling a document closes its open issues.</p>
+                <field name="line_ids" nolabel="1">
+                    <tree editable="bottom" create="0" decoration-danger="problem">
+                        <field name="doc_id" force_save="1"/>
+                        <field name="doc_type_id"/>
+                        <field name="state"/>
+                        <field name="processing_state"/>
+                        <field name="issue_count"/>
+                        <field name="problem"/>
+                    </tree>
+                </field>
+                <footer>
+                    <button name="action_confirm" type="object" string="Cancel Documents" class="btn-danger"
+                            confirm="Are you sure you want to cancel these documents?"/>
+                    <button special="cancel" string="Discard" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="edi_document_mass_cancel_action" model="ir.actions.act_window">
+        <field name="name">Cancel</field>
+        <field name="res_model">edi.document.mass.cancel</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="edi.model_edi_document"/>
+        <field name="binding_view_types">list,form</field>
+        <field name="groups_id" eval="[(4, ref('base.group_system'))]"/>
+    </record>
+</odoo>
