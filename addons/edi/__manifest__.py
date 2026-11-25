@@ -54,6 +54,7 @@ Key Features
         "views/ir_cron_views.xml",
         "views/project_issue_views.xml",
         "wizard/edi_autocreate.xml",
+        "wizard/edi_document_mass_cancel.xml",
     ],
     "qweb": ["static/src/xml/thread.xml"],
 }
